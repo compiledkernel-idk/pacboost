@@ -21,4 +21,6 @@ src/main_p2.rs
 src/main_part2.rs
 src/main_part3.rs
 src/main_part4.rs
-src/main_part5.rs
+src/main_part5.rs*.tar.gz
+pacboost
+kdownload
