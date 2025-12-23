@@ -15,7 +15,10 @@ Standard pacman downloads packages one by one. If you have a fast internet conne
 
 <ul>
   <li><strong>Parallel Downloads:</strong> Maximum speed for every update using a native async downloader.</li>
-  <li><strong>AUR Support:</strong> Search and discover packages from the Arch User Repository.</li>
+  <li><strong>AUR Support:</strong> Search and install packages from the Arch User Repository.</li>
+  <li><strong>Mirror Ranking:</strong> (Beta) Automatically find and sort the fastest mirrors.</li>
+  <li><strong>Orphan Cleaning:</strong> (Beta) Detect and remove unused dependencies.</li>
+  <li><strong>Detailed Info:</strong> (Beta) View comprehensive package details.</li>
   <li><strong>System Health:</strong> Built-in diagnostics for systemd services, disk space, and symlinks.</li>
   <li><strong>Arch News:</strong> Read the latest Arch Linux news directly from your terminal.</li>
   <li><strong>Package History:</strong> Quickly view your recent installation and upgrade history.</li>
@@ -23,20 +26,25 @@ Standard pacman downloads packages one by one. If you have a fast internet conne
   <li><strong>Simple UI:</strong> Clean progress bars and easy-to-read tables.</li>
 </ul>
 
+> ⚠️ **Beta Branch**: You are viewing the beta branch. Features here are experimental. Use with caution.
+
 ## Installation
 
-### Quick Install
-Install pacboost from the **release tab** or with a **single command**:
-
+### Stable Release
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
+```
+
+### Beta Release (Experimental)
+```bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/beta/install-beta.sh | bash
 ```
 
 ### Build from Source
 If you prefer to build it yourself, ensure you have `rust`, `base-devel`, and `pkgconf` installed:
 
 ```bash
-git clone https://github.com/compiledkernel-idk/pacboost.git
+git clone -b beta https://github.com/compiledkernel-idk/pacboost.git
 cd pacboost
 cargo build --release
 sudo cp target/release/pacboost /usr/local/bin/
@@ -46,7 +54,7 @@ sudo cp target/release/pacboost /usr/local/bin/
 
 Use it just like pacman. It supports all the main commands:
 
-### Update your whole system
+### Sync databases and update system
 ```bash
 sudo pacboost -Syu
 ```
@@ -60,6 +68,13 @@ sudo pacboost -S <package_name> # Sync DB, if not found, it'll switch to Aur
 ```bash
 pacboost -Ss <query> # Sync DB + Aur
 pacboost -A <query>  # Aur only
+```
+
+### Advanced Features (Beta)
+```bash
+sudo pacboost --rank-mirrors   # Find fastest mirrors
+sudo pacboost --clean-orphans  # Remove unused dependencies
+pacboost --info <package>      # View package details
 ```
 
 ### System Utilities

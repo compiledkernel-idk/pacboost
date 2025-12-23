@@ -32,7 +32,7 @@ mod downloader;
 mod updater;
 mod reflector;
 
-const VERSION: &str = "1.1.0";
+const VERSION: &str = "1.2.0-beta";
 #[derive(Parser)]
 #[command(name = "pacboost")]
 #[command(author = "PacBoost Team")]
@@ -121,7 +121,7 @@ fn handle_corrupt_db() -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && cli.targets.is_empty() {
+    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && !cli.rank_mirrors && !cli.clean_orphans && !cli.info && cli.targets.is_empty() {
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());
