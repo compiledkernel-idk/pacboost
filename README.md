@@ -31,7 +31,7 @@ Install pacboost with a single command:
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 ```
-
+No further installation needed because it updates automatically.
 ## How to use it
 
 Use it just like pacman. It supports all the main commands:
