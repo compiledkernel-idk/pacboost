@@ -20,6 +20,8 @@ Run tests:
 cargo test
 ```
 
+If you wish to contribute to the downloader engine, please visit the [kdownload](https://github.com/compiledkernel-idk/kdownload) repository.
+
 ## Pull Requests
 
 Submit pull requests against the master branch. Provide detailed descriptions of changes and ensure all checks pass.
