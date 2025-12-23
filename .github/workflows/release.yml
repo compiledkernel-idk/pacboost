@@ -9,26 +9,39 @@ jobs:
   build:
     name: Build and Release
     runs-on: ubuntu-latest
+
+    container:
+      image: archlinux:latest
+
     steps:
+      - name: Install system deps
+        run: |
+          pacman -Sy --noconfirm \
+            base-devel \
+            rust \
+            pkgconf \
+            libalpm \
+            tar
+
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libalpm-dev pkg-config
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-
       - name: Build release
-        run: cargo build --release
+        run: |
+          cargo build --release
+          chmod +x target/release/pacboost
+
+          # Rename binary (clean + professional)
+          mv target/release/pacboost pacboost-x86_64-linux
+
+          # Create compressed archive
+          tar -czf pacboost-x86_64-linux.tar.gz pacboost-x86_64-linux
 
       - name: Create Release
-        id: create_release
         uses: softprops/action-gh-release@v1
         with:
-          files: target/release/pacboost
-          body_path: CHANGELOG.md
+          files: |
+            pacboost-x86_64-linux
+            pacboost-x86_64-linux.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
