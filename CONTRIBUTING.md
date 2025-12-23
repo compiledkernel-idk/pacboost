@@ -5,9 +5,8 @@ Thank you for your interest in improving pacboost.
 ## Guidelines
 
 1. Focus on performance and low-level speed.
-2. Maintain a clean, serious, and emoji-free interface.
-3. Adhere to Rust best practices and safety standards.
-4. Ensure all source files contain the GPLv3 license header.
+2. Adhere to Rust best practices and safety standards.
+3. Ensure all source files contain the GPLv3 license header.
 
 ## Development
 
