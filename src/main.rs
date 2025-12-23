@@ -406,10 +406,6 @@ async fn handle_aur_install(pkg_name: &str) -> Result<()> {
     if !status.success() {
         return Err(anyhow!("makepkg failed with exit code {:?}", status.code()));
     }
-        
-    if !status.success() {
-        return Err(anyhow!("makepkg failed with exit code {:?}", status.code()));
-    }
     
     Ok(())
 }
