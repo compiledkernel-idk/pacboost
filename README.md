@@ -13,7 +13,7 @@
 
 Standard pacman downloads packages one by one. If you have a fast internet connection, you are wasting time waiting for serial downloads. 
 
-<strong>pacboost</strong> changes that. It parallelizes everything. It utilizes the <strong>Kdownload download manager</strong> (https://github.com/compiledkernel-idk/kdownload) to download multiple packages and databases at the same time, making it <strong>2x to 8x faster</strong> than standard pacman.
+<strong>pacboost</strong> changes that. It parallelizes everything. It utilizes the [kdownload download manager](https://github.com/compiledkernel-idk/kdownload) to download multiple packages and databases at the same time, making it <strong>2x to 8x faster</strong> than standard pacman.
 
 ## Key Features
 
