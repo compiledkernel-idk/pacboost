@@ -52,6 +52,16 @@ struct Cli {
     recursive: bool,
     #[arg(short = 'j', long, default_value_t = 4)]
     jobs: usize,
+    #[arg(short = 'A', long)]
+    aur: bool,
+    #[arg(long)]
+    history: bool,
+    #[arg(long)]
+    clean: bool,
+    #[arg(long)]
+    news: bool,
+    #[arg(long)]
+    health: bool,
     #[arg(value_name = "TARGETS")]
     targets: Vec<String>,
 }
@@ -101,9 +111,10 @@ fn handle_corrupt_db() -> Result<()> {
     }
     Ok(())
 }
-fn main() -> Result<()> {
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && cli.targets.is_empty() {
+    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && cli.targets.is_empty() {
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());
@@ -128,6 +139,21 @@ fn main() -> Result<()> {
     pb.enable_steady_tick(Duration::from_millis(80));
     let mut manager = alpm_manager::AlpmManager::new()?;
     pb.finish_and_clear();
+    if cli.news {
+        return fetch_arch_news().await;
+    }
+    if cli.history {
+        return show_package_history();
+    }
+    if cli.health {
+        return run_health_check();
+    }
+    if cli.clean {
+        return clean_cache();
+    }
+    if cli.aur {
+        return handle_aur_search(cli.targets).await;
+    }
     if cli.sync && cli.search {
         let results = manager.search(cli.targets)?;
         if results.is_empty() { println!("no matches found."); } else {
@@ -220,5 +246,101 @@ fn main() -> Result<()> {
     println!("{}", style(":: committing transaction...").bold());
     manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
     println!("{}", style(":: operation finished.").green().bold());
+    Ok(())
+}
+async fn fetch_arch_news() -> Result<()> {
+    println!("{}", style(":: fetching arch linux news...").bold());
+    let client = reqwest::Client::new();
+    let res = client.get("https://archlinux.org/feeds/news/").send().await?.text().await?;
+    let channel = rss::Channel::read_from(res.as_bytes()).map_err(|e| anyhow!("failed to parse rss: {}", e))?;
+    
+    let mut t = Table::new();
+    t.load_preset(UTF8_FULL);
+    t.set_header(vec!["Date", "Title"]);
+    for item in channel.items().iter().take(5) {
+        t.add_row(vec![item.pub_date().unwrap_or(""), item.title().unwrap_or("")]);
+    }
+    println!("{}", t);
+    Ok(())
+}
+
+fn show_package_history() -> Result<()> {
+    println!("{}", style(":: package history (last 20 entries)...").bold());
+    let log_path = "/var/log/pacman.log";
+    if !Path::new(log_path).exists() { return Err(anyhow!("log file not found")); }
+    let content = fs::read_to_string(log_path)?;
+    let lines: Vec<_> = content.lines().rev().filter(|l| l.contains("installed") || l.contains("removed") || l.contains("upgraded")).take(20).collect();
+    
+    let mut t = Table::new();
+    t.load_preset(UTF8_FULL);
+    t.set_header(vec!["Log Entry"]);
+    for line in lines { t.add_row(vec![line]); }
+    println!("{}", t);
+    Ok(())
+}
+
+fn run_health_check() -> Result<()> {
+    println!("{}", style(":: running system health check...").bold());
+    
+    // Check for failed services
+    let output = std::process::Command::new("systemctl").args(["--failed", "--quiet"]).output()?;
+    if !output.status.success() { println!("{}", style("! some systemd services have failed").red()); }
+    else { println!("{}", style("✓ all systemd services are running fine").green()); }
+    
+    // Check disk space
+    let output = std::process::Command::new("df").args(["-h", "/"]).output()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    if let Some(line) = stdout.lines().nth(1) { println!(":: disk usage (/): {}", line); }
+    
+    // Check for broken symlinks in /usr/bin
+    let mut broken = 0;
+    if let Ok(entries) = fs::read_dir("/usr/bin") {
+        for entry in entries.flatten() {
+            if let Ok(md) = fs::symlink_metadata(entry.path()) {
+                if md.file_type().is_symlink() && !entry.path().exists() { broken += 1; }
+            }
+        }
+    }
+    if broken > 0 { println!("{}", style(format!("! found {} broken symlinks in /usr/bin", broken)).yellow()); }
+    else { println!("{}", style("✓ no broken symlinks found in /usr/bin").green()); }
+    
+    Ok(())
+}
+
+fn clean_cache() -> Result<()> {
+    println!("{}", style(":: cleaning package cache...").bold());
+    let cache_dir = "/var/cache/pacman/pkg/";
+    let mut count = 0;
+    let mut size = 0;
+    if let Ok(entries) = fs::read_dir(cache_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Ok(md) = fs::metadata(&path) {
+                    size += md.len();
+                    let _ = fs::remove_file(path);
+                    count += 1;
+                }
+            }
+        }
+    }
+    println!(":: removed {} files ({:.2} MiB)", count, size as f64 / 1024.0 / 1024.0);
+    Ok(())
+}
+
+async fn handle_aur_search(targets: Vec<String>) -> Result<()> {
+    if targets.is_empty() { return Err(anyhow!("no targets specified for AUR search")); }
+    println!("{}", style(":: searching AUR...").bold());
+    let client = reqwest::Client::new();
+    for t in targets {
+        let url = format!("https://aur.archlinux.org/rpc/?v=5&type=search&arg={}", t);
+        let res: serde_json::Value = client.get(url).send().await?.json().await?;
+        if let Some(results) = res.get("results").and_then(|r| r.as_array()) {
+            for pkg in results {
+                println!("{}/{} {}
+    {}", style("aur").magenta().bold(), style(pkg["Name"].as_str().unwrap_or("")).bold(), style(pkg["Version"].as_str().unwrap_or("")).green(), pkg["Description"].as_str().unwrap_or(""));
+            }
+        }
+    }
     Ok(())
 }

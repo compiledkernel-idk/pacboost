@@ -72,11 +72,17 @@ impl AlpmManager {
     pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, concurrency: usize) -> Result<()> {
         let mut download_targets = Vec::new();
         let sync_dir = Path::new(&self.dbpath).join("sync");
-        let mirror_base = "https://geo.mirror.pkgbuild.com";
         
-        for repo in ["core", "extra", "multilib"].iter() {
-             let url = format!("{}/{}/os/x86_64/{}.db", mirror_base, repo, repo);
-             download_targets.push((url, format!("{}.db", repo)));
+        // Try to get mirrors from the registered dbs
+        for db in self.handle.syncdbs() {
+            if let Some(server) = db.servers().first() {
+                let url = format!("{}/{}.db", server, db.name());
+                download_targets.push((url, format!("{}.db", db.name())));
+            } else {
+                // Fallback to geo mirror if no server is registered
+                let url = format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}.db", db.name(), db.name());
+                download_targets.push((url, format!("{}.db", db.name())));
+            }
         }
         
         crate::downloader::download_packages(download_targets, &sync_dir, mp, concurrency).await?;

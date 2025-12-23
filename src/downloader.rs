@@ -17,11 +17,12 @@
  */
 
 use std::path::Path;
-use tokio::process::Command;
 use anyhow::{Context, Result, anyhow};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::sync::Arc;
 use tokio::sync::Semaphore;
+use futures::StreamExt;
+use tokio::io::AsyncWriteExt;
 
 pub async fn download_packages(
     urls: Vec<(String, String)>,
@@ -30,7 +31,10 @@ pub async fn download_packages(
     concurrency: usize,
 ) -> Result<()> {
     let semaphore = Arc::new(Semaphore::new(concurrency));
-    let mut handles = Vec::new();
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()?;
+    let client = Arc::new(client);
 
     if !cache_dir.exists() {
         tokio::fs::create_dir_all(cache_dir).await.context("failed to create cache directory")?;
@@ -47,8 +51,11 @@ pub async fn download_packages(
     main_pb.set_style(total_style);
     main_pb.set_message("fetching");
 
+    let mut handles = Vec::new();
+
     for (url, filename) in urls {
         let sem_clone = semaphore.clone();
+        let client_clone = client.clone();
         let cache_dir_owned = cache_dir.to_path_buf();
         let url_clone = url.clone();
         let filename_clone = filename.clone();
@@ -58,38 +65,37 @@ pub async fn download_packages(
         let handle = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
             
-            let pb = mp_clone.add(ProgressBar::new_spinner());
-            pb.set_style(ProgressStyle::with_template("   {spinner:.blue} {msg}").unwrap());
-            pb.set_message(format!("resolving: {}", filename_clone));
-            pb.enable_steady_tick(std::time::Duration::from_millis(100));
+            let pb = mp_clone.add(ProgressBar::new(0));
+            pb.set_style(ProgressStyle::with_template("   {spinner:.blue} {msg} [{bar:20.blue/cyan}] {bytes}/{total_bytes}").unwrap());
+            pb.set_message(format!("downloading: {}", filename_clone));
 
             let target_path = cache_dir_owned.join(&filename_clone);
-            if target_path.exists() {
-                let _ = tokio::fs::remove_file(&target_path).await;
+            
+            let response = client_clone.get(&url_clone).send().await
+                .map_err(|e| anyhow!("failed to send request for {}: {}", url_clone, e))?;
+
+            if !response.status().is_success() {
+                return Err(anyhow!("failed to download {}: status {}", url_clone, response.status()));
             }
 
-            let output = Command::new("/usr/local/bin/kdownload")
-                .arg(&url_clone)
-                .current_dir(&cache_dir_owned)
-                .output()
-                .await;
-
-            match output {
-                Ok(out) if out.status.success() => {
-                    pb.finish_and_clear(); 
-                    main_pb_clone.inc(1);
-                    Ok(())
-                }
-                Ok(out) => {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    pb.finish_with_message(format!("error: {} (exit {})", filename_clone, out.status.code().unwrap_or(-1)));
-                    Err(anyhow!("kdownload failed for {}: exit {:?}\nstderr: {}", url_clone, out.status.code(), stderr))
-                }
-                Err(e) => {
-                    pb.finish_with_message(format!("fatal: {}", filename_clone));
-                    Err(anyhow!("failed to execute kdownload: {}", e))
-                }
+            if let Some(content_length) = response.content_length() {
+                pb.set_length(content_length);
             }
+
+            let mut file = tokio::fs::File::create(&target_path).await
+                .map_err(|e| anyhow!("failed to create file {}: {}", target_path.display(), e))?;
+
+            let mut stream = response.bytes_stream();
+            while let Some(item) = stream.next().await {
+                let chunk = item.map_err(|e| anyhow!("error while downloading {}: {}", url_clone, e))?;
+                file.write_all(&chunk).await
+                    .map_err(|e| anyhow!("failed to write to file {}: {}", target_path.display(), e))?;
+                pb.inc(chunk.len() as u64);
+            }
+
+            pb.finish_and_clear(); 
+            main_pb_clone.inc(1);
+            Ok(())
         });
         handles.push(handle);
     }
