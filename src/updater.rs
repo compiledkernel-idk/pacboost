@@ -7,8 +7,9 @@ use serde::Deserialize;
 use console::style;
 use std::fs;
 use std::io::{self, Write};
-use std::path::PathBuf;
 use anyhow::Result;
+use flate2::read::GzDecoder;
+use tar::Archive;
 
 #[derive(Deserialize)]
 struct GithubAsset {
@@ -25,7 +26,6 @@ struct GithubRelease {
 pub struct UpdateInfo {
     pub version: String,
     pub pacboost_url: Option<String>,
-    pub kdownload_url: Option<String>,
 }
 
 pub fn check_for_updates(current_version: &str) -> Option<UpdateInfo> {
@@ -43,13 +43,10 @@ pub fn check_for_updates(current_version: &str) -> Option<UpdateInfo> {
                 let mut info = UpdateInfo {
                     version: latest.to_string(),
                     pacboost_url: None,
-                    kdownload_url: None,
                 };
                 for asset in release.assets {
-                    if asset.name == "pacboost" {
+                    if asset.name.contains("linux") && asset.name.ends_with(".tar.gz") {
                         info.pacboost_url = Some(asset.browser_download_url);
-                    } else if asset.name == "kdownload" {
-                        info.kdownload_url = Some(asset.browser_download_url);
                     }
                 }
                 return Some(info);
@@ -63,43 +60,58 @@ pub fn perform_update(info: UpdateInfo) -> Result<()> {
     println!("{}", style(":: starting automatic update...").bold().cyan());
 
     let current_pacboost = std::env::current_exe()?;
-    let current_kdownload = PathBuf::from("/usr/local/bin/kdownload");
 
     if let Some(url) = info.pacboost_url {
-        update_binary("pacboost", &url, &current_pacboost)?;
-    }
-
-    if let Some(url) = info.kdownload_url {
-        update_binary("kdownload", &url, &current_kdownload)?;
+        update_binary_from_tarball("pacboost", &url, &current_pacboost)?;
     }
 
     println!("{}", style(":: update completed successfully.").green().bold());
     Ok(())
 }
 
-fn update_binary(name: &str, url: &str, target: &std::path::Path) -> Result<()> {
+fn update_binary_from_tarball(name: &str, url: &str, target: &std::path::Path) -> Result<()> {
     print!("   fetching {}... ", name);
     io::stdout().flush()?;
 
     let response = ureq::get(url).call().map_err(|e| anyhow::anyhow!("failed to download {}: {}", name, e))?;
-    let mut bytes = Vec::new();
-    response.into_reader().read_to_end(&mut bytes)?;
-
-    let temp_path = target.with_extension("tmp");
-    fs::write(&temp_path, bytes)?;
+    
+    // Read the response body into a buffer
+    let mut reader = response.into_reader();
+    let mut buffer = Vec::new();
+    reader.read_to_end(&mut buffer)?;
+    
+    let tar = GzDecoder::new(std::io::Cursor::new(buffer));
+    let mut archive = Archive::new(tar);
+    
+    // Find the binary in the archive
+    let mut found = false;
+    let temp_target = target.with_extension("tmp");
+    
+    for file in archive.entries()? {
+        let mut file = file?;
+        let path = file.path()?;
+        if path.file_name().and_then(|n| n.to_str()) == Some(name) {
+             file.unpack(&temp_target)?;
+             found = true;
+             break;
+        }
+    }
+    
+    if !found {
+        return Err(anyhow::anyhow!("binary not found in update archive"));
+    }
 
     // Set permissions (executable)
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        let mut perms = fs::metadata(&temp_path)?.permissions();
+        let mut perms = fs::metadata(&temp_target)?.permissions();
         perms.set_mode(0o755);
-        fs::set_permissions(&temp_path, perms)?;
+        fs::set_permissions(&temp_target, perms)?;
     }
 
     // Replace binary
-    // Note: Replacing a running binary works on Linux via rename
-    fs::rename(&temp_path, target).map_err(|e| {
+    fs::rename(&temp_target, target).map_err(|e| {
         if e.kind() == io::ErrorKind::PermissionDenied {
             anyhow::anyhow!("permission denied: please run with sudo to update")
         } else {
