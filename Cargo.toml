@@ -1,0 +1,15 @@
+[package]
+name = "pacboost"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+alpm = "4.0"
+clap = { version = "4.5", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+anyhow = "1.0"
+indicatif = "0.17"
+console = "0.15"
+comfy-table = "7.1"
+futures = "0.3"
+url = "2.5"
