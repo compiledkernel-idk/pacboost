@@ -27,7 +27,7 @@ Standard package managers often leave your high-speed bandwidth underutilized. p
 Deploy the latest optimized binary to your system with a single command:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
+curl -sl https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/master/install.sh | bash
 ```
 
 ### Build from Source
