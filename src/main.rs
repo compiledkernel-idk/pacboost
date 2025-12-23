@@ -31,7 +31,7 @@ mod alpm_manager;
 mod downloader;
 mod updater;
 
-const VERSION: &str = "1.0.0";
+const VERSION: &str = "1.1.0";
 #[derive(Parser)]
 #[command(name = "pacboost")]
 #[command(author = "PacBoost Team")]
