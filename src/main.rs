@@ -168,8 +168,7 @@ async fn main() -> Result<()> {
     if cli.refresh {
          println!("{}", style(":: syncing databases...").bold());
          let mp = MultiProgress::new();
-         let rt = tokio::runtime::Runtime::new()?;
-         rt.block_on(manager.sync_dbs_manual(Some(mp), cli.jobs))?;
+         manager.sync_dbs_manual(Some(mp), cli.jobs).await?;
     }
     if cli.targets.is_empty() && !cli.sys_upgrade { return Ok(()); }
     let pb = ProgressBar::new_spinner();
@@ -239,8 +238,7 @@ async fn main() -> Result<()> {
         if !to_dl.is_empty() {
             println!("{}", style(":: fetching packages...").bold());
             let mp = MultiProgress::new();
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(downloader::download_packages(to_dl, cache, Some(mp), cli.jobs))?;
+            downloader::download_packages(to_dl, cache, Some(mp), cli.jobs).await?;
         }
     }
     println!("{}", style(":: committing transaction...").bold());
