@@ -170,6 +170,7 @@ async fn main() -> Result<()> {
          let mp = MultiProgress::new();
          manager.sync_dbs_manual(Some(mp), cli.jobs).await?;
     }
+    let mut aur_targets = Vec::new();
     if cli.targets.is_empty() && !cli.sys_upgrade { return Ok(()); }
     let pb = ProgressBar::new_spinner();
     pb.set_style(spinner_style.clone());
@@ -191,14 +192,14 @@ async fn main() -> Result<()> {
             for db in manager.handle.syncdbs() {
                 if let Ok(p) = db.pkg(t.as_str()) { manager.handle.trans_add_pkg(p).map_err(|e| anyhow!("failed: {}", e))?; found = true; break; }
             }
-            if !found { return Err(anyhow!("target not found: {}", t)); }
+            if !found { aur_targets.push(t.clone()); }
         }
     }
     manager.handle.trans_prepare().map_err(|e| anyhow!("failed: {}", e))?;
     pb.finish_and_clear();
     let pkgs_add: Vec<_> = manager.handle.trans_add().iter().collect();
     let pkgs_remove: Vec<_> = manager.handle.trans_remove().iter().collect();
-    if pkgs_add.is_empty() && pkgs_remove.is_empty() { println!("nothing to do."); let _ = manager.handle.trans_release(); return Ok(()); }
+    if pkgs_add.is_empty() && pkgs_remove.is_empty() && aur_targets.is_empty() { println!("nothing to do."); let _ = manager.handle.trans_release(); return Ok(()); }
     if !pkgs_remove.is_empty() {
         println!("{}", style("\nREMOVAL").red().bold());
         let mut t = Table::new(); t.load_preset(UTF8_FULL); t.set_header(vec!["package", "version", "size"]);
@@ -241,8 +242,23 @@ async fn main() -> Result<()> {
             downloader::download_packages(to_dl, cache, Some(mp), cli.jobs).await?;
         }
     }
-    println!("{}", style(":: committing transaction...").bold());
-    manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
+    if !pkgs_add.is_empty() || !pkgs_remove.is_empty() {
+        println!("{}", style(":: committing transaction...").bold());
+        manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
+    }
+    
+    // Release the lock before AUR installation
+    drop(manager);
+    let _ = fs::remove_file("/var/lib/pacman/db.lck");
+    
+    if !aur_targets.is_empty() {
+        for t in aur_targets {
+            if let Err(e) = handle_aur_install(&t).await {
+                eprintln!("{} failed to install {}: {}", style("error:").red().bold(), t, e);
+            }
+        }
+    }
+    
     println!("{}", style(":: operation finished.").green().bold());
     Ok(())
 }
@@ -323,6 +339,78 @@ fn clean_cache() -> Result<()> {
         }
     }
     println!(":: removed {} files ({:.2} MiB)", count, size as f64 / 1024.0 / 1024.0);
+    Ok(())
+}
+
+async fn handle_aur_install(pkg_name: &str) -> Result<()> {
+    println!("{}", style(format!(":: checking AUR for {}...", pkg_name)).bold());
+    let client = reqwest::Client::new();
+    let url = format!("https://aur.archlinux.org/rpc/?v=5&type=info&arg[]={}", pkg_name);
+    let res: serde_json::Value = client.get(url).send().await?.json().await?;
+    
+    let results = res.get("results").and_then(|r| r.as_array());
+    if results.is_none() || results.unwrap().is_empty() {
+        return Err(anyhow!("package {} not found in sync DBs or AUR", pkg_name));
+    }
+    
+    let pkg = &results.unwrap()[0];
+    let package_base = pkg["PackageBase"].as_str().ok_or_else(|| anyhow!("invalid AUR response"))?;
+    
+    println!("{}", style(format!(":: downloading AUR snapshot for {}...", pkg_name)).bold());
+    let snapshot_url = format!("https://aur.archlinux.org/cgit/aur.git/snapshot/{}.tar.gz", package_base);
+    let tarball_path = format!("/tmp/{}.tar.gz", package_base);
+    
+    let response = client.get(snapshot_url).send().await?;
+    let mut file = fs::File::create(&tarball_path)?;
+    let mut content = std::io::Cursor::new(response.bytes().await?);
+    std::io::copy(&mut content, &mut file)?;
+    
+    println!("{}", style(":: extracting and building...").bold());
+    let build_parent = "/tmp/pacboost-aur";
+    let build_dir = format!("{}/{}", build_parent, package_base);
+    let _ = fs::remove_dir_all(&build_dir);
+    fs::create_dir_all(build_parent)?;
+    
+    // Extract
+    let status = std::process::Command::new("tar")
+        .args(["-xzf", &tarball_path, "-C", build_parent])
+        .status()?;
+    if !status.success() { return Err(anyhow!("failed to extract tarball")); }
+    
+    // Check if running as root
+    let uid_output = std::process::Command::new("id").arg("-u").output()?;
+    let uid = String::from_utf8_lossy(&uid_output.stdout).trim().to_string();
+    
+    let status = if uid == "0" {
+        if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+            println!("{}", style(format!(":: dropping privileges to {} for makepkg...", sudo_user)).yellow());
+            // Ensure the build directory is accessible by the sudo user
+            let _ = std::process::Command::new("chown").args(["-R", &format!("{}:{}", sudo_user, sudo_user), build_parent]).status();
+            
+            std::process::Command::new("sudo")
+                .args(["-u", &sudo_user, "makepkg", "-si", "--noconfirm"])
+                .current_dir(&build_dir)
+                .status()?
+        } else {
+            println!("{}", style("! warning: running as root. makepkg cannot run as root.").yellow());
+            println!("{}", style("  please run pacboost as a normal user or with sudo.").yellow());
+            return Err(anyhow!("cannot build AUR package as root without SUDO_USER"));
+        }
+    } else {
+        std::process::Command::new("makepkg")
+            .args(["-si", "--noconfirm"])
+            .current_dir(&build_dir)
+            .status()?
+    };
+        
+    if !status.success() {
+        return Err(anyhow!("makepkg failed with exit code {:?}", status.code()));
+    }
+        
+    if !status.success() {
+        return Err(anyhow!("makepkg failed with exit code {:?}", status.code()));
+    }
+    
     Ok(())
 }
 

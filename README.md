@@ -53,8 +53,7 @@ sudo pacboost -Syu
 
 ### Install a package
 ```bash
-sudo pacboost -S <package_name> # Sync DB
-sudo pacboost -A <package_name> # Aur
+sudo pacboost -S <package_name> # Sync DB, if not found, it'll switch to Aur
 ```
 
 ### Search for a package (Sync DB + AUR)
