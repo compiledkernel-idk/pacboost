@@ -16,12 +16,7 @@ jobs:
     steps:
       - name: Install system deps
         run: |
-          pacman -Sy --noconfirm \
-            base-devel \
-            rust \
-            pkgconf \
-            libalpm \
-            tar
+          pacman -Sy --noconfirm base-devel rust pkgconf pacman
 
       - name: Checkout code
         uses: actions/checkout@v4
