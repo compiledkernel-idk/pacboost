@@ -17,7 +17,7 @@ Standard package managers often leave your high-speed bandwidth underutilized. p
 <ul>
   <li><strong>Extreme Parallelization:</strong> Simultaneous database sync and package fetching via the kdownload engine.</li>
   <li><strong>Automated Self-Repair:</strong> Intelligent detection and removal of stale locks and corrupted local database entries.</li>
-  <li><strong>Modern UX:</strong> APT-inspired progress visualization with a clean, high-performance CLI output.</li>
+  <li><strong>Modern UX:</strong> 
   <li><strong>Continuous Delivery:</strong> Integrated GitHub API tracking for seamless, one-click binary updates.</li>
   <li><strong>Full Compatibility:</strong> Complete replacement for standard installation, upgrade, removal, and search workflows.</li>
 </ul>
