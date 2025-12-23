@@ -11,8 +11,22 @@ pacboost is a low-level frontend for libalpm focusing on speed, parallelization,
 - Parallel package and database synchronization.
 - Automated stale lock handling and local database repair.
 - Recursive removal and system upgrade support.
+- Automatic update notifications via GitHub API.
 - Minimalist high-performance CLI interface.
 - Checksum verification for cached packages.
+
+## Installation
+
+### One-line Installation
+```bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
+```
+
+### Manual Installation (Local Build)
+```bash
+cargo build --release
+sudo install -Dm755 target/release/pacboost /usr/local/bin/pacboost
+```
 
 ## Usage
 

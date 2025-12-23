@@ -6,11 +6,36 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
-...
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ */
+
+use anyhow::{Result, anyhow};
+use clap::{Parser};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use console::{style};
+use comfy_table::Table;
+use comfy_table::presets::UTF8_FULL;
+use std::time::Duration;
+use std::path::Path;
+use std::fs;
+use alpm::TransFlag;
+
+mod alpm_manager;
+mod downloader;
+mod updater;
+
+const VERSION: &str = "1.0.0";
 #[derive(Parser)]
 #[command(name = "pacboost")]
 #[command(author = "PacBoost Team")]
-#[command(version = "1.0.0")]
+#[command(version = VERSION)]
 #[command(about = "High-performance Arch Linux package manager frontend.")]
 struct Cli {
     #[arg(short = 'S', long)]
@@ -30,7 +55,6 @@ struct Cli {
     #[arg(value_name = "TARGETS")]
     targets: Vec<String>,
 }
-
 fn handle_lock_file() -> Result<()> {
     let lock_path = Path::new("/var/lib/pacman/db.lck");
     if !lock_path.exists() { return Ok(()); }
@@ -58,6 +82,7 @@ fn handle_lock_file() -> Result<()> {
         }
     }
 }
+
 fn handle_corrupt_db() -> Result<()> {
     let local_path = Path::new("/var/lib/pacman/local");
     if local_path.exists() {
@@ -76,13 +101,23 @@ fn handle_corrupt_db() -> Result<()> {
     }
     Ok(())
 }
-
 fn main() -> Result<()> {
     let cli = Cli::parse();
     if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && cli.targets.is_empty() {
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());
+    }
+    if let Some(info) = updater::check_for_updates(VERSION) {
+        println!("{}", style(format!( ":: a new version is available: {} (current: {})", info.version, VERSION)).cyan().bold());
+        use std::io::{self, Write};
+        print!("   update now? [Y/n] "); io::stdout().flush()?;
+        let mut input = String::new(); io::stdin().read_line(&mut input)?;
+        if input.trim().is_empty() || input.trim().to_lowercase().starts_with('y') {
+            if let Err(e) = updater::perform_update(info) {
+                eprintln!("{} update failed: {}", style("error:").red().bold(), e);
+            } else { println!("   please restart pacboost."); return Ok(()); }
+        }
     }
     let _ = handle_lock_file();
     let _ = handle_corrupt_db();
@@ -117,29 +152,24 @@ fn main() -> Result<()> {
     pb.enable_steady_tick(Duration::from_millis(80));
     let mut flags = TransFlag::empty();
     if cli.remove && cli.recursive { flags |= TransFlag::RECURSE; }
-    manager.handle.trans_init(flags).map_err(|e| anyhow!("transaction failed: {}", e))?;
+    manager.handle.trans_init(flags).map_err(|e| anyhow!("failed to init trans: {}", e))?;
     if cli.remove {
         let local_db = manager.handle.localdb();
         for t in &cli.targets {
-            if let Ok(p) = local_db.pkg(t.as_str()) { 
-                manager.handle.trans_remove_pkg(p).map_err(|e| anyhow!("failed to remove: {}", e))?; 
-            } else { return Err(anyhow!("target not found: {}", t)); }
+            if let Ok(p) = local_db.pkg(t.as_str()) { manager.handle.trans_remove_pkg(p).map_err(|e| anyhow!("failed: {}", e))?; }
+            else { return Err(anyhow!("target not found: {}", t)); }
         }
     } else {
-        if cli.sys_upgrade { manager.handle.sync_sysupgrade(false).map_err(|e| anyhow!("upgrade failed: {}", e))?; }
+        if cli.sys_upgrade { manager.handle.sync_sysupgrade(false).map_err(|e| anyhow!("failed: {}", e))?; }
         for t in &cli.targets {
             let mut found = false;
             for db in manager.handle.syncdbs() {
-                if let Ok(p) = db.pkg(t.as_str()) { 
-                    manager.handle.trans_add_pkg(p).map_err(|e| anyhow!("failed to add: {}", e))?; 
-                    found = true; 
-                    break; 
-                }
+                if let Ok(p) = db.pkg(t.as_str()) { manager.handle.trans_add_pkg(p).map_err(|e| anyhow!("failed: {}", e))?; found = true; break; }
             }
             if !found { return Err(anyhow!("target not found: {}", t)); }
         }
     }
-    manager.handle.trans_prepare().map_err(|e| anyhow!("resolution failed: {}", e))?;
+    manager.handle.trans_prepare().map_err(|e| anyhow!("failed: {}", e))?;
     pb.finish_and_clear();
     let pkgs_add: Vec<_> = manager.handle.trans_add().iter().collect();
     let pkgs_remove: Vec<_> = manager.handle.trans_remove().iter().collect();
@@ -156,8 +186,7 @@ fn main() -> Result<()> {
         let (mut td, mut ti) = (0, 0);
         for p in &pkgs_add {
             let rs = if let Some(db) = p.db() { db.pkg(p.name()).map(|x| x.download_size()).unwrap_or(p.download_size()) } else { p.download_size() };
-            td += rs;
-            ti += p.isize();
+            td += rs; ti += p.isize();
             let ds = if rs == 0 { "Cached".to_string() } else { format!("{:.2} MiB", rs as f64 / 1024.0 / 1024.0) };
             t.add_row(vec![p.name(), p.version().as_str(), &ds, &format!("{:.2} MiB", p.isize() as f64 / 1024.0 / 1024.0), p.db().map(|d| d.name()).unwrap_or("-")]);
         }
@@ -166,8 +195,7 @@ fn main() -> Result<()> {
         println!("Total Installed: {:.2} MiB", ti as f64 / 1024.0 / 1024.0);
     }
     use std::io::{self, Write};
-    print!("\n{} proceed with transaction? [Y/n] ", style("::").bold().cyan());
-    io::stdout().flush()?;
+    print!("\n{} proceed? [Y/n] ", style("::").bold().cyan()); io::stdout().flush()?;
     let mut input = String::new(); io::stdin().read_line(&mut input)?;
     if !input.trim().is_empty() && !input.trim().to_lowercase().starts_with('y') { let _ = manager.handle.trans_release(); return Ok(()); }
     if !pkgs_add.is_empty() {
