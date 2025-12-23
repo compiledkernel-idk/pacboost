@@ -79,4 +79,4 @@ See [CHANGELOG.md](CHANGELOG.md) for a full list of changes.
 ## Licensing
 
 **pacboost** is licensed under the **GNU General Public License v3.0**.  
-Copyright (C) 2025 compiledkernel-idk and pacboost contributors.
+Copyright (C) 2025 compiledkernel-idk, NacreousDawn596 and other pacboost contributors.
