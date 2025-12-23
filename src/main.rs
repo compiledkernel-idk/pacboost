@@ -33,6 +33,21 @@ mod updater;
 mod reflector;
 
 const VERSION: &str = "1.2.0-beta";
+const BANNER: &str = r#"
+  _____                _                 _   
+ |  __ \              | |               | |  
+ | |__) |_ _  ___  ___| |__   ___   ___  | |_ 
+ |  ___/ _` |/ __|/ _ \ '_ \ / _ \ / _ \ | __|
+ | |  | (_| | (__|  __/ |_) | (_) | (_) || |_ 
+ |_|   \__,_|\___|\___|_.__/ \___/ \___/  \__|
+"#;
+
+fn print_banner() {
+    println!("{}", style(BANNER).cyan().bold());
+    println!("   {} - High-performance Arch Linux package manager", style("pacboost").bold());
+    println!("   Version: {}\n", style(VERSION).yellow());
+}
+
 #[derive(Parser)]
 #[command(name = "pacboost")]
 #[command(author = "PacBoost Team")]
@@ -122,6 +137,7 @@ fn handle_corrupt_db() -> Result<()> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && !cli.rank_mirrors && !cli.clean_orphans && !cli.info && cli.targets.is_empty() {
+        print_banner();
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());

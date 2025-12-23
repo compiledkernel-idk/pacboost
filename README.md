@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>pacboost</h1>
+  <img src="assets/logo.svg" alt="pacboost logo" width="400" />
   <p><strong>The fastest way to install packages on Arch Linux.</strong></p>
 </div>
 
