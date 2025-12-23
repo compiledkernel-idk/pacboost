@@ -14,20 +14,34 @@ Standard pacman downloads packages one by one. If you have a fast internet conne
 ## Key Features
 
 <ul>
-  <li><strong>Parallel Downloads:</strong> Maximum speed for every update.</li>
+  <li><strong>Parallel Downloads:</strong> Maximum speed for every update using a native async downloader.</li>
+  <li><strong>AUR Support:</strong> Search and discover packages from the Arch User Repository.</li>
+  <li><strong>System Health:</strong> Built-in diagnostics for systemd services, disk space, and symlinks.</li>
+  <li><strong>Arch News:</strong> Read the latest Arch Linux news directly from your terminal.</li>
+  <li><strong>Package History:</strong> Quickly view your recent installation and upgrade history.</li>
   <li><strong>Auto-Repair:</strong> Automatically fixes database locks and corrupted files.</li>
   <li><strong>Simple UI:</strong> Clean progress bars and easy-to-read tables.</li>
-  <li><strong>Self-Updating:</strong> Checks GitHub automatically so you always have the latest version.</li>
 </ul>
 
 ## Installation
 
-Install pacboost with a single command:
+### Quick Install
+Install pacboost from the **release tab** or with a **single command**:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 ```
-No further installation needed because it updates automatically.
+
+### Build from Source
+If you prefer to build it yourself, ensure you have `rust`, `base-devel`, and `pkgconf` installed:
+
+```bash
+git clone https://github.com/compiledkernel-idk/pacboost.git
+cd pacboost
+cargo build --release
+sudo cp target/release/pacboost /usr/local/bin/
+```
+
 ## How to use it
 
 Use it just like pacman. It supports all the main commands:
@@ -39,26 +53,30 @@ sudo pacboost -Syu
 
 ### Install a package
 ```bash
-sudo pacboost -S <package_name>
+sudo pacboost -S <package_name> # Sync DB, if not found, it'll switch to Aur
 ```
 
-### Search for a package
+### Search for a package (Sync DB + AUR)
 ```bash
-pacboost -Ss <query>
+pacboost -Ss <query> # Sync DB + Aur
+pacboost -A <query>  # Aur only
 ```
 
-### Remove a package
+### System Utilities
 ```bash
-sudo pacboost -Rs <package_name>
+pacboost --news      # Read Arch News
+pacboost --history   # View package history
+pacboost --health    # Run system health check
+sudo pacboost --clean # Clean package cache
 ```
 
 <hr />
 
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a full list of changes.
+
 ## Licensing
 
 **pacboost** is licensed under the **GNU General Public License v3.0**.  
-Copyright (C) 2025 compiledkernel-idk and pacboost contributors.
-
-The integrated **kdownload** engine is licensed under the **MIT License**.  
-Copyright (C) 2025 compiledkernel-idk.
-[kdownload Repository](https://github.com/compiledkernel-idk/kdownload)
+Copyright (C) 2025 compiledkernel-idk, NacreousDawn596 and other pacboost contributors.

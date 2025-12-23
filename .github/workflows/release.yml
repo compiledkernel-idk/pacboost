@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: ubuntu-latest
+
+    container:
+      image: archlinux:latest
+
+    steps:
+      - name: Install system deps
+        run: |
+          pacman -Sy --noconfirm base-devel rust pkgconf pacman
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build release
+        run: |
+          cargo build --release
+          chmod +x target/release/pacboost
+
+          # Rename binary (clean + professional)
+          mv target/release/pacboost pacboost-x86_64-linux
+
+          # Create compressed archive
+          tar -czf pacboost-x86_64-linux.tar.gz pacboost-x86_64-linux
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            pacboost-x86_64-linux
+            pacboost-x86_64-linux.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
