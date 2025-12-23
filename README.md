@@ -37,7 +37,7 @@ curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/in
 
 ### Beta Release (Experimental)
 ```bash
-curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/beta/install-beta.sh | bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/beta/install-beta.sh | bash
 ```
 
 ### Build from Source
