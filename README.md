@@ -1,7 +1,3 @@
-/*
- * pacboost - High-performance Arch Linux package manager frontend.
- * Copyright (C) 2025  compiledkernel-idk and pacboost contributors
- */
 <div align="center">
   <h1>pacboost</h1>
   <p><strong>The fastest way to install packages on Arch Linux.</strong></p>
@@ -58,7 +54,11 @@ sudo pacboost -Rs <package_name>
 
 <hr />
 
-## License
+## Licensing
 
-GNU General Public License v3.0
+**pacboost** is licensed under the **GNU General Public License v3.0**.  
 Copyright (C) 2025 compiledkernel-idk and pacboost contributors.
+
+The integrated **kdownload** engine is licensed under the **MIT License**.  
+Copyright (C) 2025 compiledkernel-idk.
+[kdownload Repository](https://github.com/compiledkernel-idk/kdownload)
