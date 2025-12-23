@@ -1,8 +1,8 @@
 #!/bin/bash
-/*
- * pacboost - High-performance Arch Linux package manager frontend.
- * Copyright (C) 2025  compiledkernel-idk and pacboost contributors
- */
+#
+# pacboost - High-performance Arch Linux package manager frontend.
+# Copyright (C) 2025  compiledkernel-idk and pacboost contributors
+#
 set -e
 
 REPO="compiledkernel-idk/pacboost"
@@ -16,17 +16,21 @@ if [ -z "$TAG" ]; then
     exit 1
 fi
 
-echo ":: Downloading pacboost $TAG..."
-curl -L -# -o pacboost_bin "https://github.com/$REPO/releases/download/$TAG/pacboost"
+TARBALL="pacboost-$TAG-linux-x86_64.tar.gz"
+URL="https://github.com/$REPO/releases/download/$TAG/$TARBALL"
 
-echo ":: Downloading kdownload..."
-curl -L -# -o kdownload_bin "https://github.com/$REPO/releases/download/$TAG/kdownload"
+echo ":: Downloading $TARBALL..."
+curl -L -# -o "$TARBALL" "$URL"
 
-chmod +x pacboost_bin kdownload_bin
+echo ":: Extracting binaries..."
+tar -xzf "$TARBALL" pacboost kdownload
 
 echo ":: Installing to /usr/local/bin (requires sudo)..."
-sudo mv pacboost_bin /usr/local/bin/pacboost
-sudo mv kdownload_bin /usr/local/bin/kdownload
+sudo install -Dm755 pacboost /usr/local/bin/pacboost
+sudo install -Dm755 kdownload /usr/local/bin/kdownload
+
+echo ":: Cleaning up..."
+rm "$TARBALL" pacboost kdownload
 
 echo ":: Installation successful."
 echo "   You can now use 'pacboost' to manage your system."
