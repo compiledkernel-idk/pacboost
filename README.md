@@ -1,66 +1,64 @@
+/*
+ * pacboost - High-performance Arch Linux package manager frontend.
+ * Copyright (C) 2025  compiledkernel-idk and pacboost contributors
+ */
 <div align="center">
   <h1>pacboost</h1>
-  <p><strong>High-Performance Arch Linux Package Management</strong></p>
-  <p>A low-level, parallelized frontend for libalpm engineered for maximum throughput.</p>
+  <p><strong>The fastest way to install packages on Arch Linux.</strong></p>
 </div>
 
 <hr />
 
-## Performance Engineering
+## Why pacboost?
 
-pacboost is built for users who demand more from their package manager. By utilizing the <strong>Rust</strong> systems language and the multi-stream execution engine of <strong>kdownload</strong>, pacboost achieves synchronization and download speeds <strong>2 to 8 times faster</strong> than standard pacman.
+Standard pacman downloads packages one by one. If you have a fast internet connection, you are wasting time waiting for serial downloads. 
 
-Standard package managers often leave your high-speed bandwidth underutilized. pacboost eliminates these bottlenecks by parallelizing database synchronization and package fetching, turning a sluggish system update into a near-instant operation.
+<strong>pacboost</strong> changes that. It parallelizes everything. By downloading multiple packages and databases at the same time, it is <strong>2x to 8x faster</strong> than standard pacman.
 
-## Core Capabilities
+## Key Features
 
 <ul>
-  <li><strong>Extreme Parallelization:</strong> Simultaneous database sync and package fetching via the kdownload engine.</li>
-  <li><strong>Automated Self-Repair:</strong> Intelligent detection and removal of stale locks and corrupted local database entries.</li>
-  <li><strong>Modern UX:</strong> 
-  <li><strong>Continuous Delivery:</strong> Integrated GitHub API tracking for seamless, one-click binary updates.</li>
-  <li><strong>Full Compatibility:</strong> Complete replacement for standard installation, upgrade, removal, and search workflows.</li>
+  <li><strong>Parallel Downloads:</strong> Maximum speed for every update.</li>
+  <li><strong>Auto-Repair:</strong> Automatically fixes database locks and corrupted files.</li>
+  <li><strong>Simple UI:</strong> Clean progress bars and easy-to-read tables.</li>
+  <li><strong>Self-Updating:</strong> Checks GitHub automatically so you always have the latest version.</li>
 </ul>
 
-## Quick Start
+## Installation
 
-Deploy the latest optimized binary to your system with a single command:
+Install pacboost with a single command:
 
 ```bash
-curl -sl https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/master/install.sh | bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 ```
 
-### Build from Source
-```bash
-cargo build --release
-sudo install -Dm755 target/release/pacboost /usr/local/bin/pacboost
-```
+## How to use it
 
-## Commands
+Use it just like pacman. It supports all the main commands:
 
-### System Synchronization & Upgrade
+### Update your whole system
 ```bash
 sudo pacboost -Syu
 ```
 
-### Package Installation
+### Install a package
 ```bash
-sudo pacboost -S <package>
+sudo pacboost -S <package_name>
 ```
 
-### Recursive Removal
-```bash
-sudo pacboost -Rs <package>
-```
-
-### Database Search
+### Search for a package
 ```bash
 pacboost -Ss <query>
 ```
 
+### Remove a package
+```bash
+sudo pacboost -Rs <package_name>
+```
+
 <hr />
 
-## Licensing
+## License
 
-This project is licensed under the <strong>GNU General Public License v3.0</strong>.
+GNU General Public License v3.0
 Copyright (C) 2025 compiledkernel-idk and pacboost contributors.
