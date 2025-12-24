@@ -31,6 +31,11 @@ Install pacboost from the **release tab** or with a **single command**:
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 ```
+### Or beta release (Experimental)
+
+```bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/beta/install-beta.sh | bash
+```
 
 ### Build from Source
 If you prefer to build it yourself, ensure you have `rust`, `base-devel`, and `pkgconf` installed:
