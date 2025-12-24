@@ -222,10 +222,10 @@ async fn main() -> Result<()> {
             if t == "pacboost" || t == "pacboost-bin" {
                 println!("{}", style("").bold());
                 println!("{}", style("╔═══════════════════════════════════════════════════════════════╗").cyan().bold());
-                println!("{}", style("║   Yo dawg, I heard you like pacboost...                    ║").cyan().bold());
-                println!("{}", style("║  So I'm using pacboost to install pacboost!                  ║").cyan().bold());
+                println!("{}", style("║   Why is dawg trying to install pacboost.                    ║").cyan().bold());
+                println!("{}", style("║   I'm not sure why you would do that.                       ║").cyan().bold());
                 println!("{}", style("║                                                               ║").cyan().bold());
-                println!("{}", style("║  (This is actually totally fine, just funny )              ║").cyan().bold());
+                println!("{}", style("║   Maybe you should try something else?                      ║").cyan().bold());
                 println!("{}", style("╚═══════════════════════════════════════════════════════════════╝").cyan().bold());
                 println!("{}", style("").bold());
                 std::thread::sleep(std::time::Duration::from_millis(1500));
