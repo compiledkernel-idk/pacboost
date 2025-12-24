@@ -1,6 +1,7 @@
 #!/bin/bash
 #
 # pacboost - High-performance Arch Linux package manager frontend.
+# Updated: 2025-12-24 16:17
 # Copyright (C) 2025  compiledkernel-idk and pacboost contributors
 #
 set -e
