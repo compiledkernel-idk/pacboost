@@ -31,7 +31,7 @@ TMP_DIR=$(mktemp -d)
 tar -xzf "$TARBALL" -C "$TMP_DIR"
 
 echo ":: Installing to /usr/local/bin (requires sudo)..."
-sudo install -Dm755 "$TMP_DIR/pacboost" /usr/local/bin/pacboost
+sudo install -Dm755 "$TMP_DIR/pacboost-x86_64-linux" /usr/local/bin/pacboost
 
 echo ":: Cleaning up..."
 rm "$TARBALL"
