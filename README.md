@@ -39,7 +39,7 @@ Where `pacman` stops, `pacboost` continues:
 Install the latest stable release with a single command:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/tags/v1.2.0/install.sh | bash
 ```
 
 ### Build from Source
