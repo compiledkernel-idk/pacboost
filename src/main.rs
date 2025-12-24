@@ -36,9 +36,9 @@ mod config;
 mod logging;
 mod aur;
 
-const VERSION: &str = "1.5.2";
+const VERSION: &str = "1.6.0";
 const LONG_VERSION: &str = concat!(
-    "1.5.2\n",
+    "1.6.0\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
@@ -82,6 +82,10 @@ struct Cli {
     clean_orphans: bool,
     #[arg(long)]
     info: bool,
+    #[arg(long, help = "Benchmark mirror download speeds")]
+    benchmark: bool,
+    #[arg(long, help = "Bypass any confirmation prompts")]
+    noconfirm: bool,
     #[arg(value_name = "TARGETS")]
     targets: Vec<String>,
 }
@@ -134,7 +138,7 @@ fn handle_corrupt_db() -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && !cli.rank_mirrors && !cli.clean_orphans && !cli.info && cli.targets.is_empty() {
+    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && !cli.rank_mirrors && !cli.clean_orphans && !cli.info && !cli.benchmark && cli.targets.is_empty() {
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());
@@ -180,6 +184,11 @@ async fn main() -> Result<()> {
     if cli.info {
         if cli.targets.is_empty() { return Err(anyhow!("no package specified for info")); }
         return show_package_info(&manager, &cli.targets);
+    }
+    if cli.benchmark {
+        // Get all configured mirrors from alpm_manager
+        let mirrors = manager.get_all_mirrors();
+        return downloader::run_benchmark(mirrors, 512).await.map(|_| ());
     }
     if cli.aur {
         return handle_aur_search(cli.targets).await;
@@ -263,10 +272,12 @@ async fn main() -> Result<()> {
         println!("\nTotal Download:  {:.2} MiB", td as f64 / 1024.0 / 1024.0);
         println!("Total Installed: {:.2} MiB", ti as f64 / 1024.0 / 1024.0);
     }
-    use std::io::{self, Write};
-    print!("\n{} proceed? [Y/n] ", style("::").bold().cyan()); io::stdout().flush()?;
-    let mut input = String::new(); io::stdin().read_line(&mut input)?;
-    if !input.trim().is_empty() && !input.trim().to_lowercase().starts_with('y') { let _ = manager.handle.trans_release(); return Ok(()); }
+    if !cli.noconfirm {
+        use std::io::{self, Write};
+        print!("\n{} proceed? [Y/n] ", style("::").bold().cyan()); io::stdout().flush()?;
+        let mut input = String::new(); io::stdin().read_line(&mut input)?;
+        if !input.trim().is_empty() && !input.trim().to_lowercase().starts_with('y') { let _ = manager.handle.trans_release(); return Ok(()); }
+    }
     if !pkgs_add.is_empty() {
         let mut to_dl: Vec<(Vec<String>, String)> = Vec::new();
         let cache = Path::new("/var/cache/pacman/pkg/");
@@ -305,7 +316,18 @@ async fn main() -> Result<()> {
         if !to_dl.is_empty() {
             println!("{}", style(":: fetching packages...").bold());
             let mp = MultiProgress::new();
-            downloader::download_packages(to_dl, cache, Some(mp), cli.jobs).await?;
+            
+            let tasks: Vec<_> = to_dl.into_iter().map(|(mirrors, filename)| {
+                downloader::DownloadTask::new(mirrors, filename)
+            }).collect();
+            
+            let config = downloader::DownloadConfig {
+                max_connections: cli.jobs * 4, // Allow more connections per job
+                ..Default::default()
+            };
+            
+            let engine = downloader::DownloadEngine::new(config)?;
+            engine.download_all(tasks, cache, Some(mp)).await?;
         }
     }
     if !pkgs_add.is_empty() || !pkgs_remove.is_empty() {

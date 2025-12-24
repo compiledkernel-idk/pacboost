@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## v1.6.0
+- **New Feature**: Insanely fast segmented parallel downloader
+- **New Feature**: Multi-mirror racing with intelligent failover
+- **New Feature**: Adaptive parallelism (up to 16x connections)
+- **New Feature**: `--benchmark` flag to test mirror speeds
+- **Improvement**: HTTP/2 multiplexing support
+- **Improvement**: Resume support for interrupted downloads
+
 ## [1.5.2] - 2025-12-24
 
 ### Fixed

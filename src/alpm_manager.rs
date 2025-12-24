@@ -158,8 +158,8 @@ impl AlpmManager {
     }
     
     /// Sync databases using ALL available mirrors with failover
-    pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, concurrency: usize) -> Result<()> {
-        let mut download_targets = Vec::new();
+    pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, _concurrency: usize) -> Result<()> {
+        let mut tasks = Vec::new();
         let sync_dir = Path::new(&self.dbpath).join("sync");
         
         // Collect ALL mirrors for each database for racing/failover
@@ -170,7 +170,7 @@ impl AlpmManager {
                 .collect();
             
             if !servers.is_empty() {
-                download_targets.push((servers, format!("{}.db", db.name())));
+                tasks.push(crate::downloader::DownloadTask::new(servers, format!("{}.db", db.name())));
             } else {
                 // Fallback to geo mirror if no servers registered
                 let fallback = vec![format!(
@@ -178,12 +178,22 @@ impl AlpmManager {
                     db.name(),
                     db.name()
                 )];
-                download_targets.push((fallback, format!("{}.db", db.name())));
+                tasks.push(crate::downloader::DownloadTask::new(fallback, format!("{}.db", db.name())));
             }
         }
         
-        crate::downloader::download_packages(download_targets, &sync_dir, mp, concurrency).await?;
+        let engine = crate::downloader::DownloadEngine::new(crate::downloader::DownloadConfig::default())?;
+        engine.download_all(tasks, &sync_dir, mp).await?;
         Ok(())
+    }
+
+    /// Get all configured mirrors across all repositories
+    pub fn get_all_mirrors(&self) -> Vec<String> {
+        self.handle
+            .syncdbs()
+            .iter()
+            .flat_map(|db| db.servers().iter().map(|s| s.to_string()))
+            .collect()
     }
     
     /// Get all mirror URLs for a specific repository

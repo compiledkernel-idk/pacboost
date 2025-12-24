@@ -54,6 +54,25 @@ pub fn check_for_updates(current_version: &str) -> Option<UpdateInfo> {
         if let Ok(release) = res.into_json::<GithubRelease>() {
             let latest = release.tag_name.trim_start_matches('v');
             if latest != current_version {
+                // Simple SemVer comparison to prevent downgrades
+                let parse_ver = |v: &str| -> Option<(u32, u32, u32)> {
+                    let parts: Vec<&str> = v.split('.').collect();
+                    if parts.len() >= 3 {
+                       Some((
+                           parts[0].parse().unwrap_or(0),
+                           parts[1].parse().unwrap_or(0),
+                           parts[2].parse().unwrap_or(0)
+                       ))
+                    } else { None }
+                };
+                
+                // Only update if remote is newer
+                if let (Some((r_maj, r_min, r_pat)), Some((c_maj, c_min, c_pat))) = (parse_ver(latest), parse_ver(current_version)) {
+                    if r_maj < c_maj { return None; }
+                    if r_maj == c_maj && r_min < c_min { return None; }
+                    if r_maj == c_maj && r_min == c_min && r_pat <= c_pat { return None; }
+                }
+                
                 let mut info = UpdateInfo {
                     version: latest.to_string(),
                     pacboost_url: None,
