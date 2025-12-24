@@ -36,9 +36,9 @@ mod config;
 mod logging;
 mod aur;
 
-const VERSION: &str = "1.4.1";
+const VERSION: &str = "1.4.2";
 const LONG_VERSION: &str = concat!(
-    "1.4.1\n",
+    "1.4.2\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
@@ -140,7 +140,7 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     if let Some(info) = updater::check_for_updates(VERSION) {
-        println!("{}", style(format!( ":: a new version is available: {} (current: {})", info.version, VERSION)).cyan().bold());
+        println!("{}", style(format!( ":: a new version of pacboost is available: {} (current: {})", info.version, VERSION)).cyan().bold());
         use std::io::{self, Write};
         print!("   update now? [Y/n] "); io::stdout().flush()?;
         let mut input = String::new(); io::stdin().read_line(&mut input)?;
