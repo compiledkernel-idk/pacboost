@@ -31,8 +31,12 @@ mod alpm_manager;
 mod downloader;
 mod updater;
 mod reflector;
+mod error;
+mod config;
+mod logging;
+mod aur;
 
-const VERSION: &str = "1.3.0";
+const VERSION: &str = "1.4.0";
 
 #[derive(Parser)]
 #[command(name = "pacboost")]
@@ -288,9 +292,9 @@ async fn main() -> Result<()> {
         manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
     }
     
-    // Release the lock before AUR installation
+    // Properly release ALPM handle - lock is automatically released on drop
+    // DO NOT manually delete lock file - this is unsafe and can corrupt the database!
     drop(manager);
-    let _ = fs::remove_file("/var/lib/pacman/db.lck");
     
     if !aur_targets.is_empty() {
         install_aur_packages(aur_targets).await?;
@@ -472,12 +476,12 @@ async fn fetch_aur(pkg_name: &str) -> Result<(String, String)> {
     let url = format!("https://aur.archlinux.org/rpc/?v=5&type=info&arg[]={}", pkg_name);
     let res: serde_json::Value = client.get(url).send().await?.json().await?;
     
-    let results = res.get("results").and_then(|r| r.as_array());
-    if results.is_none() || results.unwrap().is_empty() {
-        return Err(anyhow!("package {} not found in AUR", pkg_name));
-    }
+    let results = res.get("results")
+        .and_then(|r| r.as_array())
+        .filter(|arr| !arr.is_empty())
+        .ok_or_else(|| anyhow!("package {} not found in AUR", pkg_name))?;
     
-    let pkg = &results.unwrap()[0];
+    let pkg = &results[0];
     let package_base = pkg["PackageBase"].as_str().ok_or_else(|| anyhow!("invalid AUR response"))?;
     
     let snapshot_url = format!("https://aur.archlinux.org/cgit/aur.git/snapshot/{}.tar.gz", package_base);
@@ -552,55 +556,102 @@ fn build_aur(pkg_name: &str, build_dir: &str) -> Result<()> {
     Ok(())
 }
 
-/// Install multiple AUR packages with parallel fetching
+/// Install multiple AUR packages with dependency resolution
 async fn install_aur_packages(targets: Vec<String>) -> Result<()> {
     if targets.is_empty() { return Ok(()); }
     
-    println!("{}", style(format!(":: fetching {} AUR package(s) in parallel...", targets.len())).bold());
+    // Load configuration
+    let cfg = config::Config::load();
     
-    // Phase 1: Fetch all packages in parallel
-    let fetch_tasks: Vec<_> = targets.iter()
-        .map(|t| fetch_aur(t))
-        .collect();
-    
-    let results = futures::future::join_all(fetch_tasks).await;
-    
-    // Collect successful fetches
-    let mut fetched = Vec::new();
-    for result in results {
-        match result {
-            Ok((name, build_dir)) => fetched.push((name, build_dir)),
-            Err(e) => eprintln!("{} fetch failed: {}", style("error:").red().bold(), e),
+    // Create a temporary ALPM handle to check official packages
+    let check_official = |name: &str| -> bool {
+        // Check if package exists in official repos or is installed locally
+        if let Ok(handle) = alpm::Alpm::new("/", "/var/lib/pacman") {
+            // Register sync databases
+            let dbs = ["core", "extra", "multilib"];
+            for db_name in dbs {
+                let _ = handle.register_syncdb(db_name, alpm::SigLevel::USE_DEFAULT);
+            }
+            
+            // Check sync dbs
+            for db in handle.syncdbs() {
+                if db.pkg(name).is_ok() {
+                    return true;
+                }
+            }
+            
+            // Also check if it's already installed locally
+            if handle.localdb().pkg(name).is_ok() {
+                return true;
+            }
         }
-    }
+        false
+    };
     
-    if fetched.is_empty() {
-        return Err(anyhow!("all AUR packages failed to fetch"));
-    }
-    
-    // Phase 2: Build packages sequentially (makepkg needs exclusive access)
-    println!("{}", style(format!(":: building {} package(s)...", fetched.len())).bold());
-    for (name, build_dir) in fetched {
-        if let Err(e) = build_aur(&name, &build_dir) {
-            eprintln!("{} build failed for {}: {}", style("error:").red().bold(), name, e);
-        }
-    }
-    
-    Ok(())
+    // Use the new AUR subsystem with dependency resolution
+    aur::builder::install_aur_packages_with_deps(targets, &cfg, check_official).await
 }
 
 async fn handle_aur_search(targets: Vec<String>) -> Result<()> {
     if targets.is_empty() { return Err(anyhow!("no targets specified for AUR search")); }
-    println!("{}", style(":: searching AUR...").bold());
-    let client = reqwest::Client::new();
+    
+    println!();
+    println!("{} Searching AUR for: {}", 
+        style("::").cyan().bold(),
+        style(targets.join(", ")).white().bold());
+    println!();
+    
+    let client = aur::AurClient::new();
     for t in targets {
-        let url = format!("https://aur.archlinux.org/rpc/?v=5&type=search&arg={}", t);
-        let res: serde_json::Value = client.get(url).send().await?.json().await?;
-        if let Some(results) = res.get("results").and_then(|r| r.as_array()) {
-            for pkg in results {
-                println!("{}/{} {}
-    {}", style("aur").magenta().bold(), style(pkg["Name"].as_str().unwrap_or("")).bold(), style(pkg["Version"].as_str().unwrap_or("")).green(), pkg["Description"].as_str().unwrap_or(""));
+        match client.search(&t).await {
+            Ok(results) => {
+                if results.is_empty() {
+                    println!("   No results found for '{}'", style(&t).yellow());
+                    continue;
+                }
+                
+                println!("{} {} result(s) for '{}':", 
+                    style("::").cyan().bold(),
+                    style(results.len()).white().bold(),
+                    style(&t).yellow());
+                println!();
+                
+                for pkg in results {
+                    let maintainer = pkg.maintainer.as_deref().unwrap_or("orphan");
+                    let ood_marker = if pkg.out_of_date.is_some() { 
+                        style(" [out-of-date]").red().to_string() 
+                    } else { 
+                        String::new() 
+                    };
+                    let orphan_marker = if maintainer == "orphan" {
+                        style(" [orphan]").red().to_string()
+                    } else {
+                        String::new()
+                    };
+                    
+                    println!("{}/{} {}{}{}",
+                        style("aur").magenta().bold(),
+                        style(&pkg.name).white().bold(),
+                        style(&pkg.version).green(),
+                        ood_marker,
+                        orphan_marker);
+                    
+                    if let Some(desc) = &pkg.description {
+                        println!("    {}", style(desc).dim());
+                    }
+                    
+                    println!("    Votes: {}  Popularity: {:.2}  Maintainer: {}",
+                        style(pkg.num_votes).cyan(),
+                        pkg.popularity,
+                        style(maintainer).white());
+                    
+                    if let Some(url) = &pkg.url {
+                        println!("    URL: {}", style(url).blue().underlined());
+                    }
+                    println!();
+                }
             }
+            Err(e) => eprintln!("{} search failed: {}", style("error:").red().bold(), e),
         }
     }
     Ok(())

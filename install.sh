@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # pacboost - High-performance Arch Linux package manager frontend.
-# Updated: 2025-12-24 16:17
+# Version: 1.4.0
+# Updated: 2025-12-24
 # Copyright (C) 2025  compiledkernel-idk and pacboost contributors
 #
 set -e
@@ -16,6 +17,8 @@ if [ -z "$TAG" ]; then
     echo "error: could not retrieve latest release tag"
     exit 1
 fi
+
+echo ":: Found version: $TAG"
 
 TARBALL="pacboost-$TAG-linux-x86_64.tar.gz"
 URL="https://github.com/$REPO/releases/download/$TAG/$TARBALL"
@@ -34,5 +37,17 @@ echo ":: Cleaning up..."
 rm "$TARBALL"
 rm -rf "$TMP_DIR"
 
-echo ":: Installation successful."
-echo "   You can now use 'pacboost' to manage your system."
+echo ""
+echo ":: Installation successful!"
+echo "   pacboost $TAG installed to /usr/local/bin/pacboost"
+echo ""
+echo "   Features in v1.4.0:"
+echo "     - Complete AUR subsystem rewrite with dependency resolution"
+echo "     - Security scanning for PKGBUILDs"
+echo "     - Automatic PGP key importing"
+echo "     - Enhanced UI with progress bars and detailed output"
+echo "     - Proper error handling with recovery strategies"
+echo ""
+echo "   Usage: sudo pacboost -Syu        # Full system upgrade"
+echo "          sudo pacboost -S <pkg>    # Install package (official or AUR)"
+echo "          pacboost -A <query>       # Search AUR"
