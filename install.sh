@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # pacboost - High-performance Arch Linux package manager frontend.
-# Version: 1.4.3
+# Version: 1.5.0
 # Updated: 2025-12-24
 # Copyright (C) 2025  compiledkernel-idk and pacboost contributors
 #
@@ -41,15 +41,14 @@ echo ""
 echo ":: Installation successful!"
 echo "   pacboost $TAG installed to /usr/local/bin/pacboost"
 echo ""
-echo "   Features in v1.4.3:"
-echo "     - Fixed automatic self-updater"
-echo "     - Improved update notification message"
-echo "     - Added copyright and warranty disclaimer to --version"
-echo "     - Complete AUR subsystem rewrite with dependency resolution"
+echo "   Features in v1.5.0:"
+echo "     - Added easter egg for self-installation"
+echo "     - Published to AUR (pacboost and pacboost-bin)"
+echo "     - Automatic updates from latest master/release"
+echo "     - Complete AUR subsystem with dependency resolution"
 echo "     - Security scanning for PKGBUILDs"
 echo "     - Automatic PGP key importing"
 echo "     - Enhanced UI with progress bars and detailed output"
-echo "     - Proper error handling with recovery strategies"
 echo ""
 echo "   Usage: sudo pacboost -Syu        # Full system upgrade"
 echo "          sudo pacboost -S <pkg>    # Install package (official or AUR)"

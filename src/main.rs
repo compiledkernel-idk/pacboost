@@ -36,9 +36,9 @@ mod config;
 mod logging;
 mod aur;
 
-const VERSION: &str = "1.4.3";
+const VERSION: &str = "1.5.0";
 const LONG_VERSION: &str = concat!(
-    "1.4.3\n",
+    "1.5.0\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
@@ -218,6 +218,19 @@ async fn main() -> Result<()> {
     } else {
         if cli.sys_upgrade { manager.handle.sync_sysupgrade(false).map_err(|e| anyhow!("failed: {}", e))?; }
         for t in &cli.targets {
+            // Easter egg: detect if user is trying to install pacboost with pacboost
+            if t == "pacboost" || t == "pacboost-bin" {
+                println!("{}", style("").bold());
+                println!("{}", style("╔═══════════════════════════════════════════════════════════════╗").cyan().bold());
+                println!("{}", style("║   Yo dawg, I heard you like pacboost...                    ║").cyan().bold());
+                println!("{}", style("║  So I'm using pacboost to install pacboost!                  ║").cyan().bold());
+                println!("{}", style("║                                                               ║").cyan().bold());
+                println!("{}", style("║  (This is actually totally fine, just funny )              ║").cyan().bold());
+                println!("{}", style("╚═══════════════════════════════════════════════════════════════╝").cyan().bold());
+                println!("{}", style("").bold());
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+            }
+            
             let mut found = false;
             for db in manager.handle.syncdbs() {
                 if let Ok(p) = db.pkg(t.as_str()) { manager.handle.trans_add_pkg(p).map_err(|e| anyhow!("failed: {}", e))?; found = true; break; }

@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2025-12-24
+
+### Added
+- **Easter Egg**: Added a fun message when users try to install pacboost using pacboost itself (`sudo pacboost -S pacboost`).
+- **AUR Publication**: Published both `pacboost` and `pacboost-bin` to the Arch User Repository.
+  - `pacboost`: Builds from latest master branch automatically.
+  - `pacboost-bin`: Downloads precompiled binaries from latest GitHub release.
+
+### Changed
+- **PKGBUILD Updates**: Both AUR packages now automatically pull from latest sources (no version pinning).
+- **README**: Updated installation instructions to prioritize AUR as the recommended method.
+
 ## [1.4.3] - 2025-12-24
 
 ### Fixed
