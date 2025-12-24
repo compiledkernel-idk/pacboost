@@ -20,7 +20,7 @@ While `pacman` now supports parallel downloads, it remains a single-purpose tool
 ### Performance Comparison
 Benchmark downloading `cuda` (2.21 GB):
 
-| Metric | Pacboost 🚀 | Pacman |
+| Metric | Pacboost  | Pacman |
 | :--- | :--- | :--- |
 | **Time** | **9.3s** | 14.0s |
 | **Speed** | **~245 MB/s** | ~211 MiB/s |
