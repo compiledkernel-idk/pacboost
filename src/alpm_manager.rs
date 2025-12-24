@@ -19,7 +19,7 @@
 use alpm::{Alpm, SigLevel, LogLevel};
 use anyhow::{Result, anyhow};
 use std::path::Path;
-use indicatif::{MultiProgress};
+use indicatif::MultiProgress;
 
 pub struct AlpmManager {
     pub handle: Alpm,
@@ -69,24 +69,44 @@ impl AlpmManager {
         })
     }
     
+    /// Sync databases using ALL available mirrors with failover
     pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, concurrency: usize) -> Result<()> {
         let mut download_targets = Vec::new();
         let sync_dir = Path::new(&self.dbpath).join("sync");
         
-        // Try to get mirrors from the registered dbs
+        // Collect ALL mirrors for each database for racing/failover
         for db in self.handle.syncdbs() {
-            if let Some(server) = db.servers().first() {
-                let url = format!("{}/{}.db", server, db.name());
-                download_targets.push((url, format!("{}.db", db.name())));
+            let servers: Vec<String> = db.servers()
+                .iter()
+                .map(|s| format!("{}/{}.db", s, db.name()))
+                .collect();
+            
+            if !servers.is_empty() {
+                download_targets.push((servers, format!("{}.db", db.name())));
             } else {
-                // Fallback to geo mirror if no server is registered
-                let url = format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}.db", db.name(), db.name());
-                download_targets.push((url, format!("{}.db", db.name())));
+                // Fallback to geo mirror if no servers registered
+                let fallback = vec![format!(
+                    "https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}.db",
+                    db.name(),
+                    db.name()
+                )];
+                download_targets.push((fallback, format!("{}.db", db.name())));
             }
         }
         
         crate::downloader::download_packages(download_targets, &sync_dir, mp, concurrency).await?;
         Ok(())
+    }
+    
+    /// Get all mirror URLs for a specific repository
+    pub fn get_repo_mirrors(&self, repo_name: &str) -> Vec<String> {
+        for db in self.handle.syncdbs() {
+            if db.name() == repo_name {
+                return db.servers().iter().map(|s| s.to_string()).collect();
+            }
+        }
+        // Fallback
+        vec![format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64", repo_name)]
     }
 
     pub fn search(&self, queries: Vec<String>) -> Result<Vec<&alpm::Package>> {

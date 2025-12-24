@@ -23,24 +23,67 @@ use std::sync::Arc;
 use tokio::sync::Semaphore;
 use futures::StreamExt;
 use tokio::io::AsyncWriteExt;
+use std::time::Duration;
 
+/// Shared HTTP client with connection pooling for maximum performance
+fn create_shared_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .pool_max_idle_per_host(10)
+        .pool_idle_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(300))
+        .connect_timeout(Duration::from_secs(5))
+        .build()
+        .expect("Failed to create HTTP client")
+}
+
+/// Try to download from multiple mirrors with failover
+/// Returns the successful response or error if all mirrors failed
+async fn download_with_failover(
+    client: &reqwest::Client,
+    mirrors: &[String],
+    timeout_per_mirror: Duration,
+) -> Result<reqwest::Response> {
+    let mut last_error = None;
+    
+    for (i, url) in mirrors.iter().enumerate() {
+        match tokio::time::timeout(
+            timeout_per_mirror,
+            client.get(url).send()
+        ).await {
+            Ok(Ok(response)) if response.status().is_success() => {
+                return Ok(response);
+            }
+            Ok(Ok(response)) => {
+                last_error = Some(anyhow!("mirror {} returned status {}", i + 1, response.status()));
+            }
+            Ok(Err(e)) => {
+                last_error = Some(anyhow!("mirror {} request failed: {}", i + 1, e));
+            }
+            Err(_) => {
+                last_error = Some(anyhow!("mirror {} timed out", i + 1));
+            }
+        }
+    }
+    
+    Err(last_error.unwrap_or_else(|| anyhow!("no mirrors provided")))
+}
+
+/// Download packages with multi-mirror failover support
+/// Each file can have multiple candidate URLs (mirrors)
 pub async fn download_packages(
-    urls: Vec<(String, String)>,
+    urls: Vec<(Vec<String>, String)>,
     cache_dir: &Path,
     mp: Option<MultiProgress>,
     concurrency: usize,
 ) -> Result<()> {
     let semaphore = Arc::new(Semaphore::new(concurrency));
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .build()?;
-    let client = Arc::new(client);
+    let client = Arc::new(create_shared_client());
 
     if !cache_dir.exists() {
         tokio::fs::create_dir_all(cache_dir).await.context("failed to create cache directory")?;
     }
 
-    let mp = mp.unwrap_or_else(|| MultiProgress::new());
+    let mp = mp.unwrap_or_else(MultiProgress::new);
     
     let total_style = ProgressStyle::with_template(
         "{spinner:.cyan} {msg} [{bar:40.cyan/blue}] {pos}/{len}"
@@ -52,17 +95,17 @@ pub async fn download_packages(
     main_pb.set_message("fetching");
 
     let mut handles = Vec::new();
+    let timeout_per_mirror = Duration::from_secs(3);
 
-    for (url, filename) in urls {
+    for (mirrors, filename) in urls {
         let sem_clone = semaphore.clone();
         let client_clone = client.clone();
         let cache_dir_owned = cache_dir.to_path_buf();
-        let url_clone = url.clone();
         let filename_clone = filename.clone();
         let main_pb_clone = main_pb.clone();
         let mp_clone = mp.clone();
         
-        let handle = tokio::spawn(async move {
+        let handle: tokio::task::JoinHandle<Result<()>> = tokio::spawn(async move {
             let _permit = sem_clone.acquire().await.unwrap();
             
             let pb = mp_clone.add(ProgressBar::new(0));
@@ -71,12 +114,9 @@ pub async fn download_packages(
 
             let target_path = cache_dir_owned.join(&filename_clone);
             
-            let response = client_clone.get(&url_clone).send().await
-                .map_err(|e| anyhow!("failed to send request for {}: {}", url_clone, e))?;
-
-            if !response.status().is_success() {
-                return Err(anyhow!("failed to download {}: status {}", url_clone, response.status()));
-            }
+            // Try mirrors with failover
+            let response = download_with_failover(&client_clone, &mirrors, timeout_per_mirror).await
+                .map_err(|e| anyhow!("all mirrors failed for {}: {}", filename_clone, e))?;
 
             if let Some(content_length) = response.content_length() {
                 pb.set_length(content_length);
@@ -87,7 +127,7 @@ pub async fn download_packages(
 
             let mut stream = response.bytes_stream();
             while let Some(item) = stream.next().await {
-                let chunk = item.map_err(|e| anyhow!("error while downloading {}: {}", url_clone, e))?;
+                let chunk = item.map_err(|e| anyhow!("error while downloading {}: {}", filename_clone, e))?;
                 file.write_all(&chunk).await
                     .map_err(|e| anyhow!("failed to write to file {}: {}", target_path.display(), e))?;
                 pb.inc(chunk.len() as u64);
@@ -95,7 +135,7 @@ pub async fn download_packages(
 
             pb.finish_and_clear(); 
             main_pb_clone.inc(1);
-            Ok(())
+            Ok::<(), anyhow::Error>(())
         });
         handles.push(handle);
     }
@@ -106,4 +146,18 @@ pub async fn download_packages(
     
     main_pb.finish_and_clear();
     Ok(())
+}
+
+/// Legacy single-URL download function for backward compatibility
+pub async fn download_packages_single(
+    urls: Vec<(String, String)>,
+    cache_dir: &Path,
+    mp: Option<MultiProgress>,
+    concurrency: usize,
+) -> Result<()> {
+    let multi_urls: Vec<(Vec<String>, String)> = urls
+        .into_iter()
+        .map(|(url, filename)| (vec![url], filename))
+        .collect();
+    download_packages(multi_urls, cache_dir, mp, concurrency).await
 }

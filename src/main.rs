@@ -243,16 +243,39 @@ async fn main() -> Result<()> {
     let mut input = String::new(); io::stdin().read_line(&mut input)?;
     if !input.trim().is_empty() && !input.trim().to_lowercase().starts_with('y') { let _ = manager.handle.trans_release(); return Ok(()); }
     if !pkgs_add.is_empty() {
-        let mut to_dl = Vec::new();
+        let mut to_dl: Vec<(Vec<String>, String)> = Vec::new();
         let cache = Path::new("/var/cache/pacman/pkg/");
         for p in &pkgs_add {
             let rs = if let Some(db) = p.db() { db.pkg(p.name()).map(|x| x.download_size()).unwrap_or(p.download_size()) } else { p.download_size() };
             let f = p.filename().unwrap_or("unknown");
             let mut need = true;
             if let Ok(m) = fs::metadata(cache.join(f)) { if m.len() == rs as u64 { need = false; } }
-            if need { if let Some(db) = p.db() { to_dl.push((format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}", db.name(), f), f.to_string())); } }
+            if need {
+                if let Some(db) = p.db() {
+                    // Collect ALL mirrors for this package
+                    let mirrors: Vec<String> = manager.get_repo_mirrors(db.name())
+                        .iter()
+                        .map(|server| format!("{}/{}", server, f))
+                        .collect();
+                    let mirrors = if mirrors.is_empty() {
+                        vec![format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}", db.name(), f)]
+                    } else { mirrors };
+                    to_dl.push((mirrors, f.to_string()));
+                }
+            }
             let sf = format!("{}.sig", f);
-            if !cache.join(&sf).exists() { if let Some(db) = p.db() { to_dl.push((format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}", db.name(), sf), sf)); } }
+            if !cache.join(&sf).exists() {
+                if let Some(db) = p.db() {
+                    let sig_mirrors: Vec<String> = manager.get_repo_mirrors(db.name())
+                        .iter()
+                        .map(|server| format!("{}/{}", server, sf))
+                        .collect();
+                    let sig_mirrors = if sig_mirrors.is_empty() {
+                        vec![format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}", db.name(), sf)]
+                    } else { sig_mirrors };
+                    to_dl.push((sig_mirrors, sf));
+                }
+            }
         }
         if !to_dl.is_empty() {
             println!("{}", style(":: fetching packages...").bold());
@@ -270,11 +293,7 @@ async fn main() -> Result<()> {
     let _ = fs::remove_file("/var/lib/pacman/db.lck");
     
     if !aur_targets.is_empty() {
-        for t in aur_targets {
-            if let Err(e) = handle_aur_install(&t).await {
-                eprintln!("{} failed to install {}: {}", style("error:").red().bold(), t, e);
-            }
-        }
+        install_aur_packages(aur_targets).await?;
     }
     
     Ok(())
@@ -446,21 +465,21 @@ fn clean_cache() -> Result<()> {
     Ok(())
 }
 
-async fn handle_aur_install(pkg_name: &str) -> Result<()> {
-    println!("{}", style(format!(":: checking AUR for {}...", pkg_name)).bold());
+/// Fetch AUR package snapshot (async, parallelizable)
+/// Returns (package_name, build_directory)
+async fn fetch_aur(pkg_name: &str) -> Result<(String, String)> {
     let client = reqwest::Client::new();
     let url = format!("https://aur.archlinux.org/rpc/?v=5&type=info&arg[]={}", pkg_name);
     let res: serde_json::Value = client.get(url).send().await?.json().await?;
     
     let results = res.get("results").and_then(|r| r.as_array());
     if results.is_none() || results.unwrap().is_empty() {
-        return Err(anyhow!("package {} not found in sync DBs or AUR", pkg_name));
+        return Err(anyhow!("package {} not found in AUR", pkg_name));
     }
     
     let pkg = &results.unwrap()[0];
     let package_base = pkg["PackageBase"].as_str().ok_or_else(|| anyhow!("invalid AUR response"))?;
     
-    println!("{}", style(format!(":: downloading AUR snapshot for {}...", pkg_name)).bold());
     let snapshot_url = format!("https://aur.archlinux.org/cgit/aur.git/snapshot/{}.tar.gz", package_base);
     let tarball_path = format!("/tmp/{}.tar.gz", package_base);
     
@@ -469,7 +488,6 @@ async fn handle_aur_install(pkg_name: &str) -> Result<()> {
     let mut content = std::io::Cursor::new(response.bytes().await?);
     std::io::copy(&mut content, &mut file)?;
     
-    println!("{}", style(":: extracting and building...").bold());
     let build_parent = "/tmp/pacboost-aur";
     let build_dir = format!("{}/{}", build_parent, package_base);
     let _ = fs::remove_dir_all(&build_dir);
@@ -479,7 +497,20 @@ async fn handle_aur_install(pkg_name: &str) -> Result<()> {
     let status = std::process::Command::new("tar")
         .args(["-xzf", &tarball_path, "-C", build_parent])
         .status()?;
-    if !status.success() { return Err(anyhow!("failed to extract tarball")); }
+    if !status.success() { return Err(anyhow!("failed to extract tarball for {}", pkg_name)); }
+    
+    Ok((pkg_name.to_string(), build_dir))
+}
+
+/// Build AUR package with maximum performance optimizations
+fn build_aur(pkg_name: &str, build_dir: &str) -> Result<()> {
+    println!("{}", style(format!(":: building {}...", pkg_name)).bold());
+    
+    // Get number of CPU cores for parallel compilation
+    let num_cpus = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+    let makeflags = format!("-j{}", num_cpus);
     
     // Check if running as root
     let uid_output = std::process::Command::new("id").arg("-u").output()?;
@@ -488,12 +519,16 @@ async fn handle_aur_install(pkg_name: &str) -> Result<()> {
     let status = if uid == "0" {
         if let Ok(sudo_user) = std::env::var("SUDO_USER") {
             println!("{}", style(format!(":: dropping privileges to {} for makepkg...", sudo_user)).yellow());
-            // Ensure the build directory is accessible by the sudo user
-            let _ = std::process::Command::new("chown").args(["-R", &format!("{}:{}", sudo_user, sudo_user), build_parent]).status();
+            let build_parent = "/tmp/pacboost-aur";
+            let _ = std::process::Command::new("chown")
+                .args(["-R", &format!("{}:{}", sudo_user, sudo_user), build_parent])
+                .status();
             
             std::process::Command::new("sudo")
                 .args(["-u", &sudo_user, "makepkg", "-si", "--noconfirm"])
-                .current_dir(&build_dir)
+                .env("MAKEFLAGS", &makeflags)
+                .env("PKGEXT", ".pkg.tar")  // Disable compression for speed
+                .current_dir(build_dir)
                 .status()?
         } else {
             println!("{}", style("! warning: running as root. makepkg cannot run as root.").yellow());
@@ -503,12 +538,52 @@ async fn handle_aur_install(pkg_name: &str) -> Result<()> {
     } else {
         std::process::Command::new("makepkg")
             .args(["-si", "--noconfirm"])
-            .current_dir(&build_dir)
+            .env("MAKEFLAGS", &makeflags)
+            .env("PKGEXT", ".pkg.tar")  // Disable compression for speed
+            .current_dir(build_dir)
             .status()?
     };
         
     if !status.success() {
-        return Err(anyhow!("makepkg failed with exit code {:?}", status.code()));
+        return Err(anyhow!("makepkg failed for {} with exit code {:?}", pkg_name, status.code()));
+    }
+    
+    println!("{}", style(format!(":: {} installed successfully.", pkg_name)).green().bold());
+    Ok(())
+}
+
+/// Install multiple AUR packages with parallel fetching
+async fn install_aur_packages(targets: Vec<String>) -> Result<()> {
+    if targets.is_empty() { return Ok(()); }
+    
+    println!("{}", style(format!(":: fetching {} AUR package(s) in parallel...", targets.len())).bold());
+    
+    // Phase 1: Fetch all packages in parallel
+    let fetch_tasks: Vec<_> = targets.iter()
+        .map(|t| fetch_aur(t))
+        .collect();
+    
+    let results = futures::future::join_all(fetch_tasks).await;
+    
+    // Collect successful fetches
+    let mut fetched = Vec::new();
+    for result in results {
+        match result {
+            Ok((name, build_dir)) => fetched.push((name, build_dir)),
+            Err(e) => eprintln!("{} fetch failed: {}", style("error:").red().bold(), e),
+        }
+    }
+    
+    if fetched.is_empty() {
+        return Err(anyhow!("all AUR packages failed to fetch"));
+    }
+    
+    // Phase 2: Build packages sequentially (makepkg needs exclusive access)
+    println!("{}", style(format!(":: building {} package(s)...", fetched.len())).bold());
+    for (name, build_dir) in fetched {
+        if let Err(e) = build_aur(&name, &build_dir) {
+            eprintln!("{} build failed for {}: {}", style("error:").red().bold(), name, e);
+        }
     }
     
     Ok(())

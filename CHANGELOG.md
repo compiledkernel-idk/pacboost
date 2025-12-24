@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2025-12-24
+
+### Added
+- **Multi-Mirror Racing**: Download engine now accepts multiple mirror URLs per file and races them with automatic failover.
+- **Connection Pooling**: Shared HTTP client with persistent connections eliminates TCP handshake overhead.
+- **Parallel AUR Fetching**: All AUR packages are now downloaded and extracted simultaneously before building.
+- **Multi-Core Compilation**: AUR builds automatically use all CPU cores via MAKEFLAGS injection.
+- **Fast Packaging**: Disabled package compression for local AUR installs to eliminate unnecessary CPU cycles.
+
+### Changed
+- **Downloader Architecture**: Completely rewritten download engine with mirror failover and 3-second timeout per mirror.
+- **ALPM Integration**: Database sync and package downloads now utilize all available mirrors instead of just the first one.
+- **AUR Workflow**: Split AUR installation into separate fetch and build phases for maximum parallelism.
+
+### Performance
+- Database sync speed improved through multi-mirror racing.
+- AUR installation speed dramatically improved through parallel fetching and multi-core compilation.
+- Reduced network latency via connection pooling and keep-alive.
+
 ## [1.2.0-beta] - 2025-12-23
 
 ### Added
