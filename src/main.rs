@@ -36,9 +36,9 @@ mod config;
 mod logging;
 mod aur;
 
-const VERSION: &str = "1.5.0";
+const VERSION: &str = "1.5.1";
 const LONG_VERSION: &str = concat!(
-    "1.5.0\n",
+    "1.5.1\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
