@@ -225,7 +225,7 @@ async fn main() -> Result<()> {
                 println!("{}", style("║   Why is dawg trying to install pacboost.                    ║").cyan().bold());
                 println!("{}", style("║   I'm not sure why you would do that.                       ║").cyan().bold());
                 println!("{}", style("║                                                               ║").cyan().bold());
-                println!("{}", style("║   Maybe you should try something else?                      ║").cyan().bold());
+                println!("{}", style("║   Maybe you should try something else man.                      ║").cyan().bold());
                 println!("{}", style("╚═══════════════════════════════════════════════════════════════╝").cyan().bold());
                 println!("{}", style("").bold());
                 std::thread::sleep(std::time::Duration::from_millis(1500));
