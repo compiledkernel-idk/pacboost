@@ -73,7 +73,7 @@ pacboost -Ss <query> # Global search (Repo + AUR)
 pacboost -A <query>  # AUR specific search
 ```
 
-### New Features (v1.2.0)
+### Advanced Features
 ```bash
 sudo pacboost --rank-mirrors   # Find fastest mirrors
 sudo pacboost --clean-orphans  # Remove unused dependencies
