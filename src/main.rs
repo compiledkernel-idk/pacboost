@@ -30,8 +30,9 @@ use alpm::TransFlag;
 mod alpm_manager;
 mod downloader;
 mod updater;
+mod reflector;
 
-const VERSION: &str = "1.1.0";
+const VERSION: &str = "1.2.0";
 
 #[derive(Parser)]
 #[command(name = "pacboost")]
@@ -63,6 +64,12 @@ struct Cli {
     news: bool,
     #[arg(long)]
     health: bool,
+    #[arg(long)]
+    rank_mirrors: bool,
+    #[arg(long)]
+    clean_orphans: bool,
+    #[arg(long)]
+    info: bool,
     #[arg(value_name = "TARGETS")]
     targets: Vec<String>,
 }
@@ -115,7 +122,7 @@ fn handle_corrupt_db() -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && cli.targets.is_empty() {
+    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && !cli.rank_mirrors && !cli.clean_orphans && !cli.info && cli.targets.is_empty() {
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());
@@ -151,6 +158,16 @@ async fn main() -> Result<()> {
     }
     if cli.clean {
         return clean_cache();
+    }
+    if cli.rank_mirrors {
+        return reflector::rank_mirrors(20).await;
+    }
+    if cli.clean_orphans {
+        return clean_orphans(&mut manager);
+    }
+    if cli.info {
+        if cli.targets.is_empty() { return Err(anyhow!("no package specified for info")); }
+        return show_package_info(&manager, &cli.targets);
     }
     if cli.aur {
         return handle_aur_search(cli.targets).await;
@@ -260,7 +277,93 @@ async fn main() -> Result<()> {
         }
     }
     
-    println!("{}", style(":: operation finished.").green().bold());
+    Ok(())
+}
+
+fn clean_orphans(manager: &mut alpm_manager::AlpmManager) -> Result<()> {
+    println!("{}", style(":: checking for orphans...").bold());
+    let localdb = manager.handle.localdb();
+    let mut orphans = Vec::new();
+    
+    for pkg in localdb.pkgs() {
+        if pkg.reason() == alpm::PackageReason::Depend && pkg.required_by().is_empty() && pkg.optional_for().is_empty() {
+             orphans.push(pkg);
+        }
+    }
+    
+    if orphans.is_empty() {
+        println!("{}", style(":: no orphans found.").green());
+        return Ok(());
+    }
+    
+    let mut t = Table::new();
+    t.load_preset(UTF8_FULL);
+    t.set_header(vec!["Orphan Package", "Size"]);
+    
+    let mut total_size = 0;
+    for pkg in &orphans {
+        t.add_row(vec![pkg.name(), &format!("{:.2} MiB", pkg.isize() as f64 / 1024.0 / 1024.0)]);
+        total_size += pkg.isize();
+    }
+    println!("{}", t);
+    println!("Total Size: {:.2} MiB", total_size as f64 / 1024.0 / 1024.0);
+    
+    use std::io::{self, Write};
+    print!("\n{} remove these packages? [y/N] ", style("::").bold().cyan()); io::stdout().flush()?;
+    let mut input = String::new(); io::stdin().read_line(&mut input)?;
+    if !input.trim().to_lowercase().starts_with('y') { return Ok(()); }
+    
+    // We need to re-initialize transaction for removal
+    manager.handle.trans_init(TransFlag::RECURSE).map_err(|e| anyhow!("failed to init trans: {}", e))?;
+    for pkg in orphans {
+        manager.handle.trans_remove_pkg(pkg).map_err(|e| anyhow!("failed to remove {}: {}", pkg.name(), e))?;
+    }
+    manager.handle.trans_prepare().map_err(|e| anyhow!("failed to prepare: {}", e))?;
+    manager.handle.trans_commit().map_err(|e| anyhow!("failed to commit: {}", e))?;
+    
+    println!("{}", style(":: orphans removed.").green().bold());
+    Ok(())
+}
+
+fn show_package_info(manager: &alpm_manager::AlpmManager, targets: &[String]) -> Result<()> {
+    let db = manager.handle.localdb();
+    let sync_dbs = manager.handle.syncdbs();
+    
+    for target in targets {
+        let pkg = if let Ok(p) = db.pkg(target.as_str()) {
+            Some(p)
+        } else {
+            // Check sync dbs
+            let mut found = None;
+            for sdb in sync_dbs {
+                if let Ok(p) = sdb.pkg(target.as_str()) {
+                    found = Some(p);
+                    break;
+                }
+            }
+            found
+        };
+        
+        if let Some(p) = pkg {
+            println!("{}", style(format!("Package: {}", p.name())).bold().cyan());
+            println!("  Version      : {}", p.version());
+            println!("  Description  : {}", p.desc().unwrap_or("-"));
+            println!("  Architecture : {}", p.arch().unwrap_or("-"));
+            println!("  URL          : {}", p.url().unwrap_or("-"));
+            println!("  Licenses     : {:?}", p.licenses().iter().collect::<Vec<_>>());
+            println!("  Groups       : {:?}", p.groups().iter().collect::<Vec<_>>());
+            println!("  Provides     : {:?}", p.provides().iter().map(|d| d.to_string()).collect::<Vec<_>>());
+            println!("  Depends On   : {:?}", p.depends().iter().map(|d| d.to_string()).collect::<Vec<_>>());
+            println!("  Optional Deps: {:?}", p.optdepends().iter().map(|d| d.to_string()).collect::<Vec<_>>());
+            println!("  Required By  : {:?}", p.required_by().iter().collect::<Vec<_>>());
+            println!("  Installed Size: {:.2} MiB", p.isize() as f64 / 1024.0 / 1024.0);
+            println!("  Packager     : {}", p.packager().unwrap_or("None"));
+            println!("  Build Date   : {}", p.build_date());
+            println!("");
+        } else {
+            eprintln!("error: package '{}' not found", target);
+        }
+    }
     Ok(())
 }
 async fn fetch_arch_news() -> Result<()> {

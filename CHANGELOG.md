@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0-beta] - 2025-12-23
+
+### Added
+- **Mirror Ranking**: `--rank-mirrors` to sort mirrors by speed.
+- **Orphan Cleaning**: `--clean-orphans` to remove unused dependencies.
+- **Package Info**: `--info` for detailed package metadata.
+
+### Fixed
+- **Updater**: Fixed updater to handle `.tar.gz` archives.
+- **CLI**: Fixed argument parsing logic for new flags.
+
+## [1.1.0] - 2025-12-23
+
+### Fixed
+- **Updater Loop**: Fixed an issue where the updater looked for a raw binary instead of a tarball.
+
 ## [1.0.0] - 2025-12-23
 
 ### Added

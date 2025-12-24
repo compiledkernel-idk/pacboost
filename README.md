@@ -9,11 +9,11 @@
 
 You might ask: *"Standard pacman now supports parallel downloads, why do I need pacboost?"*
 
-While `pacman` is powerful, **pacboost** was built to be the **complete, modern frontend** that Arch users have always wanted. It's not just about speed, it's about removing the friction from your daily Linux administration.
+While `pacman` is powerful, **pacboost** was built to be the **complete, modern frontend** that Arch users have always wanted. It's not just about speed—it's about removing the friction from your daily Linux administration.
 
 Where `pacman` stops, `pacboost` continues:
 
-*   **Hybrid Power:** Seamlessly handle standard repository packages AND **AUR** packages in unified transactions. No more context switching between differnet tools.
+*   **Hybrid Power:** Seamlessly handle standard repository packages AND **AUR** packages in unified transactions. No more context switching between different tools.
 *   **Self-Healing:** Ever successfully `rm /var/lib/pacman/db.lck`? Pacboost detects stale locks and corrupt database entries and **automatically repairs them** for you.
 *   **Safety First:** Reads **Arch Linux News** directly in your terminal so you don't break your system by missing manual interventions.
 *   **System Intelligence:** Built-in **health diagnostics** check for failed systemd services, disk space issues, and broken symlinks.
@@ -24,6 +24,9 @@ Where `pacman` stops, `pacboost` continues:
 <ul>
   <li><strong>🚀 Unified Parallel Downloads:</strong> Blazing fast repository and database syncing using a native async engine (native rust).</li>
   <li><strong>📦 AUR Support:</strong> Search, inspect, and install AUR packages effortlessly (handling build dependencies and sudo privileges automatically).</li>
+  <li><strong>🌐 Smart Mirrors:</strong> Automatically find, rank, and use the fastest mirrors for your connection.</li>
+  <li><strong>🧹 Smart Cleaning:</strong> Detect and remove orphaned dependencies to keep your system bloat-free.</li>
+  <li><strong>🔍 Deep Inspection:</strong> View comprehensive extended details about any package.</li>
   <li><strong>🩺 System Health:</strong> Instant diagnostics for systemd services, disk capacity, and hygiene check for /usr/bin symlinks.</li>
   <li><strong>📰 Arch News:</strong> Fetch the latest critical news/RSS feeds before you upgrade.</li>
   <li><strong>📜 Package History:</strong> An easy-to-read log of your recent installations, upgrades, and removals.</li>
@@ -32,18 +35,11 @@ Where `pacman` stops, `pacboost` continues:
 
 ## Installation
 
-### Quick Install
+### Stable Release
 Install the latest stable release with a single command:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
-```
-
-### Beta Release (Experimental)
-Get the latest features hot off the press:
-
-```bash
-curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/beta/install-beta.sh | bash
 ```
 
 ### Build from Source
@@ -75,6 +71,13 @@ sudo pacboost -S firefox spotify
 ```bash
 pacboost -Ss <query> # Global search (Repo + AUR)
 pacboost -A <query>  # AUR specific search
+```
+
+### New Features (v1.2.0)
+```bash
+sudo pacboost --rank-mirrors   # Find fastest mirrors
+sudo pacboost --clean-orphans  # Remove unused dependencies
+pacboost --info <package>      # View package details
 ```
 
 ### System Utilities
