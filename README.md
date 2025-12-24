@@ -35,7 +35,7 @@ Where `pacman` stops, `pacboost` continues:
 
 ## Installation
 
-### Stable Release
+### Quick Install
 Install the latest stable release with a single command:
 
 ```bash
