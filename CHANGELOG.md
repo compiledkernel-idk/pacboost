@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.3] - 2025-12-24
+
+### Fixed
+- **Self-Updater**: Fixed an issue where the automatic updater couldn't find the binary in the release archive due to a naming mismatch.
+- **Improved UI**: Notification message for new versions is now more descriptive.
+
 ## [1.4.1] - 2025-12-24
 
 ### Added

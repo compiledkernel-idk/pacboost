@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # pacboost - High-performance Arch Linux package manager frontend.
-# Version: 1.4.2
+# Version: 1.4.3
 # Updated: 2025-12-24
 # Copyright (C) 2025  compiledkernel-idk and pacboost contributors
 #
@@ -31,7 +31,7 @@ TMP_DIR=$(mktemp -d)
 tar -xzf "$TARBALL" -C "$TMP_DIR"
 
 echo ":: Installing to /usr/local/bin (requires sudo)..."
-sudo install -Dm755 "$TMP_DIR/pacboost-x86_64-linux" /usr/local/bin/pacboost
+sudo install -Dm755 "$TMP_DIR/pacboost" /usr/local/bin/pacboost
 
 echo ":: Cleaning up..."
 rm "$TARBALL"
@@ -41,7 +41,8 @@ echo ""
 echo ":: Installation successful!"
 echo "   pacboost $TAG installed to /usr/local/bin/pacboost"
 echo ""
-echo "   Features in v1.4.2:"
+echo "   Features in v1.4.3:"
+echo "     - Fixed automatic self-updater"
 echo "     - Improved update notification message"
 echo "     - Added copyright and warranty disclaimer to --version"
 echo "     - Complete AUR subsystem rewrite with dependency resolution"

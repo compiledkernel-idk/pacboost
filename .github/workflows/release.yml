@@ -28,18 +28,15 @@ jobs:
         run: |
           cargo build --release
           chmod +x target/release/pacboost
-
-          # Rename binary (clean + professional)
-          mv target/release/pacboost pacboost-x86_64-linux
-
-          # Create compressed archive
-          tar -czf pacboost-x86_64-linux.tar.gz pacboost-x86_64-linux
+          
+          # Create compressed archive with standard binary name for self-updater
+          tar -czf pacboost-x86_64-linux.tar.gz -C target/release pacboost
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            pacboost-x86_64-linux
+            target/release/pacboost
             pacboost-x86_64-linux.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

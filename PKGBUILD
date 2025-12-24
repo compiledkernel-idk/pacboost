@@ -1,7 +1,7 @@
 # Maintainer: compiledkernel-idk and pacboost contributors
 
 pkgname=pacboost
-pkgver=1.4.2
+pkgver=1.4.3
 pkgrel=1
 pkgdesc="High-performance Arch Linux package manager frontend leveraging kdownload"
 arch=('x86_64')
