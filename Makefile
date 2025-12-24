@@ -8,17 +8,13 @@ BINDIR ?= $(PREFIX)/bin
 all: build
 
 build:
-	@echo ":: building kdownload..."
-	@cd kdownload && cargo build --release --locked
 	@echo ":: building pacboost..."
 	@cargo build --release --locked
 
 install: build
 	@echo ":: installing to $(BINDIR)..."
-	@install -Dm755 kdownload/target/release/kdownload $(DESTDIR)$(BINDIR)/kdownload
 	@install -Dm755 target/release/pacboost $(DESTDIR)$(BINDIR)/pacboost
 	@echo ":: installation complete."
 
 clean:
 	@cargo clean
-	@cd kdownload && cargo clean

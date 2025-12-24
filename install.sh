@@ -22,15 +22,14 @@ URL="https://github.com/$REPO/releases/download/$TAG/$TARBALL"
 echo ":: Downloading $TARBALL..."
 curl -L -# -o "$TARBALL" "$URL"
 
-echo ":: Extracting binaries..."
-tar -xzf "$TARBALL" pacboost kdownload
+echo ":: Extracting binary..."
+tar -xzf "$TARBALL" pacboost
 
 echo ":: Installing to /usr/local/bin (requires sudo)..."
 sudo install -Dm755 pacboost /usr/local/bin/pacboost
-sudo install -Dm755 kdownload /usr/local/bin/kdownload
 
 echo ":: Cleaning up..."
-rm "$TARBALL" pacboost kdownload
+rm "$TARBALL" pacboost
 
 echo ":: Installation successful."
 echo "   You can now use 'pacboost' to manage your system."
