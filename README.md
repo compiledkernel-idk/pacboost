@@ -33,8 +33,32 @@ While `pacman` now supports parallel downloads, it remains a single-purpose tool
 
 ## Installation
 
-### Quick Install
-Install the latest stable release:
+### From AUR (Recommended)
+
+**Using an AUR helper:**
+```bash
+# Precompiled binary (fastest)
+yay -S pacboost-bin
+
+# Or build from source
+yay -S pacboost
+```
+
+**Manual installation:**
+```bash
+# Precompiled binary
+git clone https://aur.archlinux.org/pacboost-bin.git
+cd pacboost-bin
+makepkg -si
+
+# Or build from source
+git clone https://aur.archlinux.org/pacboost.git
+cd pacboost
+makepkg -si
+```
+
+### Quick Install Script
+Install the latest stable release directly:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/master/install.sh | bash

@@ -1,38 +1,58 @@
-# Maintainer: compiledkernel-idk and pacboost contributors
+# Maintainer: compiledkernel-idk <berkkapla82@proton.me>
+# Contributor: pacboost contributors
 
 pkgname=pacboost
 pkgver=1.4.3
 pkgrel=1
-pkgdesc="High-performance Arch Linux package manager frontend leveraging kdownload"
+pkgdesc="High-performance package manager frontend for Arch Linux with integrated AUR support, system diagnostics, and intelligent automation"
 arch=('x86_64')
 url="https://github.com/compiledkernel-idk/pacboost"
-license=('GPL3')
-depends=('gcc-libs' 'glibc' 'pacman')
+license=('GPL-3.0-or-later')
+depends=('gcc-libs' 'glibc' 'pacman' 'git' 'base-devel')
 makedepends=('cargo' 'rust')
-source=('git+https://github.com/compiledkernel-idk/pacboost.git') # Placeholder URL
-sha256sums=('SKIP')
+optdepends=(
+  'sudo: for privilege escalation during AUR package building'
+  'asp: for advanced source package management'
+)
+provides=('pacboost')
+conflicts=('pacboost-bin' 'pacboost-git')
+backup=()
+source=("$pkgname-$pkgver.tar.gz::https://github.com/compiledkernel-idk/pacboost/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')  # Update this with actual checksum after first release
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
 
 build() {
-  cd "$srcdir/$pkgname"
-  
-  echo "Building kdownload..."
-  cd kdownload
-  cargo build --release --locked
-  cd ..
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release --all-features
+}
 
-  echo "Building pacboost..."
-  cargo build --release --locked
+check() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo test --frozen --all-features
 }
 
 package() {
-  cd "$srcdir/$pkgname"
+  cd "$pkgname-$pkgver"
   
-  # Install binaries
-  install -Dm755 kdownload/target/release/kdownload "$pkgdir/usr/bin/kdownload"
-  install -Dm755 target/release/pacboost "$pkgdir/usr/bin/pacboost"
+  # Install binary
+  install -Dm755 "target/release/$pkgname" "$pkgdir/usr/bin/$pkgname"
   
   # Install documentation
   install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 CHANGELOG.md "$pkgdir/usr/share/doc/$pkgname/CHANGELOG.md"
+  install -Dm644 CONTRIBUTING.md "$pkgdir/usr/share/doc/$pkgname/CONTRIBUTING.md"
+  
+  # Install license
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
-  install -Dm644 assets/logo.svg "$pkgdir/usr/share/pixmaps/pacboost.svg"
+  
+  # Install logo/icon
+  install -Dm644 assets/logo.svg "$pkgdir/usr/share/pixmaps/$pkgname.svg"
 }
