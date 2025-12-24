@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.1] - 2025-12-24
+
+### Added
+- **Legal Notices**: Added a brief copyright and warranty disclaimer to the `--version` output, as encouraged by the GPL.
+
 ## [1.4.0] - 2025-12-24
 
 ### Added
