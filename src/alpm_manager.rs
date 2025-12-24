@@ -57,16 +57,104 @@ impl AlpmManager {
              }
         });
         
-        for repo in ["core", "extra", "multilib"].iter() {
-            let db = handle.register_syncdb_mut(*repo, SigLevel::DATABASE_OPTIONAL)?;
-            let url = format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64", repo);
-            db.add_server(url.as_str())?; 
+        // Parse /etc/pacman.conf to get all configured repositories
+        let repos = Self::parse_pacman_conf()?;
+        
+        for (repo_name, servers) in repos {
+            let db = handle.register_syncdb_mut(repo_name.as_str(), SigLevel::DATABASE_OPTIONAL)?;
+            for server in servers {
+                db.add_server(server.as_str())?;
+            }
         }
 
         Ok(Self { 
             handle,
             dbpath: dbpath.to_string(),
         })
+    }
+    
+    /// Parse /etc/pacman.conf to extract repository names and servers
+    fn parse_pacman_conf() -> Result<Vec<(String, Vec<String>)>> {
+        use std::fs;
+        
+        let conf_content = fs::read_to_string("/etc/pacman.conf")
+            .map_err(|e| anyhow!("failed to read /etc/pacman.conf: {}", e))?;
+        
+        let mut repos = Vec::new();
+        let mut current_repo: Option<String> = None;
+        let mut current_servers = Vec::new();
+        
+        for line in conf_content.lines() {
+            let line = line.trim();
+            
+            // Skip comments and empty lines
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            
+            // Check for repository section [repo]
+            if line.starts_with('[') && line.ends_with(']') {
+                // Save previous repo if exists
+                if let Some(repo) = current_repo.take() {
+                    if !current_servers.is_empty() {
+                        repos.push((repo, current_servers.clone()));
+                        current_servers.clear();
+                    }
+                }
+                
+                let repo_name = line.trim_start_matches('[').trim_end_matches(']');
+                // Skip [options] section
+                if repo_name != "options" {
+                    current_repo = Some(repo_name.to_string());
+                }
+            }
+            // Check for Server or Include directives
+            else if let Some(repo) = &current_repo {
+                if line.starts_with("Server") {
+                    if let Some(url) = line.split('=').nth(1) {
+                        let url = url.trim();
+                        // Replace $repo and $arch variables
+                        let url = url.replace("$repo", repo).replace("$arch", "x86_64");
+                        current_servers.push(url);
+                    }
+                } else if line.starts_with("Include") {
+                    // Parse included mirrorlist files
+                    if let Some(path) = line.split('=').nth(1) {
+                        let path = path.trim();
+                        if let Ok(content) = fs::read_to_string(path) {
+                            for mirror_line in content.lines() {
+                                let mirror_line = mirror_line.trim();
+                                if mirror_line.starts_with("Server") {
+                                    if let Some(url) = mirror_line.split('=').nth(1) {
+                                        let url = url.trim();
+                                        let url = url.replace("$repo", repo).replace("$arch", "x86_64");
+                                        current_servers.push(url);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Save last repo
+        if let Some(repo) = current_repo {
+            if !current_servers.is_empty() {
+                repos.push((repo, current_servers));
+            }
+        }
+        
+        // If no repos found, fallback to standard repos
+        if repos.is_empty() {
+            repos = vec![
+                ("core".to_string(), vec!["https://geo.mirror.pkgbuild.com/core/os/x86_64".to_string()]),
+                ("extra".to_string(), vec!["https://geo.mirror.pkgbuild.com/extra/os/x86_64".to_string()]),
+                ("multilib".to_string(), vec!["https://geo.mirror.pkgbuild.com/multilib/os/x86_64".to_string()]),
+            ];
+        }
+        
+        Ok(repos)
     }
     
     /// Sync databases using ALL available mirrors with failover

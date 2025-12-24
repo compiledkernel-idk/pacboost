@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.2] - 2025-12-24
+
+### Fixed
+- **Custom Repository Support**: Fixed critical bug where pacboost only detected standard repos (core, extra, multilib) and ignored custom repositories like liquorix, endeavouros, etc.
+- **Repository Detection**: Now properly parses `/etc/pacman.conf` to detect ALL configured repositories and their mirrors.
+- **Mirror Support**: Correctly handles both direct `Server` entries and `Include` directives for mirrorlists.
+
+### Changed
+- **ALPM Manager**: Replaced hardcoded repository list with dynamic parsing from pacman configuration.
+
 ## [1.5.1] - 2025-12-24
 
 ### Changed
