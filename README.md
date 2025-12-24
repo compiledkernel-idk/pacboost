@@ -37,7 +37,7 @@ While `pacman` now supports parallel downloads, it remains a single-purpose tool
 Install the latest stable release:
 
 ```bash
-curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/tags/v1.3.0/install.sh | bash
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/refs/heads/master/install.sh | bash
 ```
 
 ### Build from Source
