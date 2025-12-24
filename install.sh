@@ -23,13 +23,15 @@ echo ":: Downloading $TARBALL..."
 curl -L -# -o "$TARBALL" "$URL"
 
 echo ":: Extracting binary..."
-tar -xzf "$TARBALL" pacboost
+TMP_DIR=$(mktemp -d)
+tar -xzf "$TARBALL" -C "$TMP_DIR"
 
 echo ":: Installing to /usr/local/bin (requires sudo)..."
-sudo install -Dm755 pacboost /usr/local/bin/pacboost
+sudo install -Dm755 "$TMP_DIR/pacboost" /usr/local/bin/pacboost
 
 echo ":: Cleaning up..."
-rm "$TARBALL" pacboost
+rm "$TARBALL"
+rm -rf "$TMP_DIR"
 
 echo ":: Installation successful."
 echo "   You can now use 'pacboost' to manage your system."
