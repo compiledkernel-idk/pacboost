@@ -20,7 +20,7 @@ fi
 
 echo ":: Found version: $TAG"
 
-TARBALL="pacboost-$TAG-linux-x86_64.tar.gz"
+TARBALL="pacboost-x86_64-linux.tar.gz"
 URL="https://github.com/$REPO/releases/download/$TAG/$TARBALL"
 
 echo ":: Downloading $TARBALL..."
