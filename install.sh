@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # pacboost - High-performance Arch Linux package manager frontend.
-# Version: 1.4.0
+# Version: 1.4.1
 # Updated: 2025-12-24
 # Copyright (C) 2025  compiledkernel-idk and pacboost contributors
 #
@@ -41,7 +41,8 @@ echo ""
 echo ":: Installation successful!"
 echo "   pacboost $TAG installed to /usr/local/bin/pacboost"
 echo ""
-echo "   Features in v1.4.0:"
+echo "   Features in v1.4.1:"
+echo "     - Added copyright and warranty disclaimer to --version"
 echo "     - Complete AUR subsystem rewrite with dependency resolution"
 echo "     - Security scanning for PKGBUILDs"
 echo "     - Automatic PGP key importing"

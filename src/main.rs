@@ -36,12 +36,20 @@ mod config;
 mod logging;
 mod aur;
 
-const VERSION: &str = "1.4.0";
+const VERSION: &str = "1.4.1";
+const LONG_VERSION: &str = concat!(
+    "1.4.1\n",
+    "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
+    "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
+    "This is free software; you are free to change and redistribute it.\n",
+    "There is NO WARRANTY, to the extent permitted by law."
+);
 
 #[derive(Parser)]
 #[command(name = "pacboost")]
 #[command(author = "PacBoost Team")]
 #[command(version = VERSION)]
+#[command(long_version = LONG_VERSION)]
 #[command(about = "High-performance Arch Linux package manager frontend.")]
 struct Cli {
     #[arg(short = 'S', long)]
