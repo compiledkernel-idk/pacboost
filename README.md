@@ -90,6 +90,7 @@ sudo pacboost -Syu        # Synchronize and upgrade (Official + AUR)
 sudo pacboost -S <pkg>    # Install from repositories or AUR
 pacboost -T               # Launch Interactive TUI Dashboard
 pacboost --check-cve      # Audit system for known vulnerabilities
+pacboost --sys-report     # Generate technical benchmark context
 pacboost --security-scan  # Scan PKGBUILD for malicious patterns
 pacboost --snapshot       # Create Btrfs snapshot before operation
 ```
