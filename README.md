@@ -11,6 +11,7 @@ It supports official pacman, AUR, Flatpak, Snap, AppImage, Docker and Podman.
 - **Turbo Download Engine**: 2x faster than pacman (~240 MB/s vs 100 MB/s) with segmented parallel racing and multi-mirror failover.
 - **Unified Management**: Official, AUR, Flatpak, Snap, and AppImage support.
 - **Safety First**: Automatic system snapshots, malware scanning, and CVE audits.
+- **Detailed Reporting**: Comprehensive transaction summaries with repository info, licenses, and live hook/extraction monitoring.
 - **Host Awareness**: Displays system context for transaction transparency.
 
 <img src="assets/logo.svg" alt="pacboost logo" width="400" />

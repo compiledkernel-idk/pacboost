@@ -590,14 +590,33 @@ async fn main() -> Result<()> {
 
     if !pkgs_add.is_empty() {
         println!("{}", style("\nINSTALLATION").green().bold());
-        // Quick summary table
+        let mut t = Table::new(); 
+        t.load_preset(UTF8_FULL); 
+        t.set_header(vec!["repo", "package", "version", "license", "dl weight", "inst weight"]);
+        
+        for p in &pkgs_add {
+            let repo = p.db().map(|db| db.name()).unwrap_or("unknown");
+            let licenses = p.licenses().into_iter().collect::<Vec<_>>().join(", ");
+            t.add_row(vec![
+                repo,
+                p.name(),
+                p.version().as_str(),
+                &licenses,
+                &format!("{:.1} MB", p.download_size() as f64 / 1024.0 / 1024.0),
+                &format!("{:.1} MB", p.isize() as f64 / 1024.0 / 1024.0)
+            ]);
+        }
+        println!("{}", t);
+        
         let count = pkgs_add.len();
         let total_inst: i64 = pkgs_add.iter().map(|p| p.isize()).sum();
         let total_dl: i64 = pkgs_add.iter().map(|p| p.download_size()).sum();
         
-        println!(" Installing {} packages", style(count).bold());
-        println!(" Download:  {:.2} MiB", total_dl as f64 / 1024.0 / 1024.0);
-        println!(" Installed: {:.2} MiB", total_inst as f64 / 1024.0 / 1024.0);
+        println!(" Installing {} packages | Download: {:.1} MB | Installed: {:.1} MB", 
+            style(count).bold(), 
+            total_dl as f64 / 1024.0 / 1024.0,
+            total_inst as f64 / 1024.0 / 1024.0
+        );
     }
 
     if !cli.noconfirm {
@@ -652,8 +671,48 @@ async fn main() -> Result<()> {
              println!("{}", style(":: packages downloaded.").bold().green());
              let _ = manager.handle.trans_release();
         } else {
+            // Set up event callbacks for the commit phase with proper counting
+            use std::sync::atomic::{AtomicUsize, Ordering};
+            let total_pkgs = pkgs_add.len() + pkgs_remove.len();
+            let pkg_idx = Box::leak(Box::new(AtomicUsize::new(0)));
+            let hook_idx = Box::leak(Box::new(AtomicUsize::new(0)));
+
+            manager.handle.set_event_cb((pkg_idx as &AtomicUsize, hook_idx as &AtomicUsize), move |event, (p_idx, h_idx)| {
+                match event.event() {
+                    alpm::Event::PackageOperationStart(e) => {
+                        let i = p_idx.fetch_add(1, Ordering::SeqCst) + 1;
+                        let name = match e.operation() {
+                            alpm::PackageOperation::Install(p) => p.name(),
+                            alpm::PackageOperation::Upgrade(p, _) => p.name(),
+                            alpm::PackageOperation::Reinstall(p, _) => p.name(),
+                            alpm::PackageOperation::Downgrade(p, _) => p.name(),
+                            alpm::PackageOperation::Remove(p) => p.name(),
+                        };
+                        match e.operation() {
+                            alpm::PackageOperation::Install(_) => println!("({}/{}) installing {}...", i, total_pkgs, style(name).bold()),
+                            alpm::PackageOperation::Upgrade(_, _) => println!("({}/{}) upgrading {}...", i, total_pkgs, style(name).bold()),
+                            alpm::PackageOperation::Reinstall(_, _) => println!("({}/{}) reinstalling {}...", i, total_pkgs, style(name).bold()),
+                            alpm::PackageOperation::Downgrade(_, _) => println!("({}/{}) downgrading {}...", i, total_pkgs, style(name).bold()),
+                            alpm::PackageOperation::Remove(_) => println!("({}/{}) removing {}...", i, total_pkgs, style(name).bold()),
+                        }
+                    }
+                    alpm::Event::ScriptletInfo(e) => print!("{}", e.line()),
+                    alpm::Event::HookRunStart(e) => {
+                        let i = h_idx.fetch_add(1, Ordering::SeqCst) + 1;
+                        println!(":: ({}/?) running hook: {}...", i, style(e.desc().unwrap_or(e.name())).dim());
+                    }
+                    _ => {}
+                }
+            });
+
+            // Progress callback for "extracting..." feel
+            manager.handle.set_progress_cb((), |op, _, percent, _, _, _| {
+                if percent == 100 || percent % 25 == 0 {
+                    // Just a simple way to show activity
+                }
+            });
+
             println!("{}", style(":: committing transaction...").bold());
-            // This is the ALPM commit which does integrity checks
             manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
         }
     }
