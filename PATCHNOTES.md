@@ -4,7 +4,7 @@
 
 ---
 
-## 🔧 Bug Fixes
+##  Bug Fixes
 
 ### Btrfs Snapshot Improvements
 
@@ -36,7 +36,7 @@ Consider using snapper or timeshift for btrfs snapshots.
 
 ---
 
-## ✨ Enhancements
+##  Enhancements
 
 ### Root Subvolume Detection
 ```
@@ -52,7 +52,7 @@ Before creating a snapshot, pacboost now verifies:
 
 ---
 
-## 📋 Full Changes
+##  Full Changes
 
 - Fixed snapshot ID detection to scan existing directories
 - Added `check_snapshot_setup()` preflight validation
@@ -62,7 +62,7 @@ Before creating a snapshot, pacboost now verifies:
 
 ---
 
-## 🔄 Upgrade
+##  Upgrade
 
 ```bash
 # From AUR
