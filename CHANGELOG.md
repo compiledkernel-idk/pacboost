@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2025-12-25
+
+### Fixed
+- **Btrfs Snapshot ID Detection**: Fixed issue where pacboost would try to create snapshot ID 1 even when existing snapper snapshots existed
+- **Snapshot Error Handling**: Improved error messages for btrfs snapshot failures with actionable guidance
+- **Root Subvolume Detection**: Now detects and displays the actual root subvolume path (e.g., `/@`)
+
+### Added
+- Preflight checks for btrfs snapshot setup
+- Automatic detection of existing snapshot directories
+- Better compatibility with snapper-managed systems
+
+---
+
 ## [2.0.0] - 2025-12-25 🎄
 
 ### MAJOR RELEASE - Complete Feature Expansion (~9,500 new lines)
