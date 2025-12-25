@@ -9,6 +9,18 @@
 
 While `pacman` now supports parallel downloads, it remains a single-purpose tool. **pacboost** extends this foundation with integrated AUR support, system diagnostics, and intelligent automation, eliminating the need to juggle multiple package management tools.
 
+### Feature Comparison
+
+| Capability | Pacboost | Pacman |
+| :--- | :---: | :---: |
+| Install Official Packages | Yes | Yes |
+| Install AUR Packages | Yes | No |
+| Segmented Downloads | Yes | No |
+| Race Multiple Mirrors | Yes | No |
+| View Arch News | Yes | No |
+| Auto-Repair DB Locks | Yes | No |
+| Check System Health | Yes | No |
+
 ### Core Advantages
 
 *   **Unified Package Management:** Install both official repository packages and AUR packages through a single interface. No need to switch between `pacman`, `yay`, or `paru`.
