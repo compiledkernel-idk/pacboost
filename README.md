@@ -24,7 +24,16 @@ This project represents a significant engineering effort with **13,609 lines of 
 | **Security Suite** | 1,879 | 30+ malware threat patterns, entropy analysis, CVE tracker |
 | **TUI Framework** | 1,794 | Custom widgets (sparklines, circular progress), async event loop |
 | **Download Engine** | 1,601 | Segmented mirror racing, connection pooling, LRU cache |
-| **Integrations** | 2,677 | Flatpak, Snap, AppImage, Docker/Podman native wrappers |
+| Integrations | 2,677 | Flatpak, Snap, AppImage, Docker/Podman native wrappers |
+
+### Performance Benchmark
+
+Benchmarking the download of the `cuda` package (2.21 GB):
+
+| Tool | Time | Average Speed | Methodology |
+| :--- | :--- | :--- | :--- |
+| **pacman** | 14.0s | ~158 MB/s | Sequential Single-Stream |
+| **pacboost** | **9.3s** | **~245 MB/s** | Segmented Parallel + Racing |
 
 ---
 
