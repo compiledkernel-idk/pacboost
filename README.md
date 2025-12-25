@@ -1,6 +1,6 @@
 # Feature packed Package Manager Frontend
 
-[pacboost](https://github.com/compiledkernel-idk/pacboost) [pacboost-bin](https://aur.archlinux.org/packages/pacboost-bin) [pacboost-git](https://aur.archlinux.org/packages/pacboost-git)
+[pacboost](https://github.com/compiledkernel-idk/pacboost) [pacboost-bin](https://aur.archlinux.org/packages/pacboost-bin)
 
 ## Description
 
