@@ -1,10 +1,12 @@
-# pacboost
-
-[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/compiledkernel-idk/pacboost/releases)
-[![License](https://img.shields.io/badge/license-GPL--3.0-green)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.70+-orange)](https://www.rust-lang.org/)
-
-A high-performance package manager frontend for Arch Linux.
+<div align="center">
+  <img src="assets/logo.svg" alt="pacboost logo" width="400" />
+  <p><strong>A high-performance package manager frontend for Arch Linux.</strong></p>
+  <p>
+    <img src="https://img.shields.io/badge/version-2.1.0-blue" alt="Version 2.1.0" />
+    <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License GPL-3.0" />
+    <img src="https://img.shields.io/badge/rust-1.70+-orange" alt="Rust 1.70+" />
+  </p>
+</div>
 
 ---
 
