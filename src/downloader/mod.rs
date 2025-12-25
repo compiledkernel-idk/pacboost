@@ -16,6 +16,7 @@ mod mirror;
 mod segment;
 mod scheduler;
 mod benchmark;
+pub mod cache;
 
 pub use engine::{DownloadEngine, DownloadTask, DownloadResult};
 pub use benchmark::run_benchmark;

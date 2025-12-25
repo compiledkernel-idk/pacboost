@@ -36,9 +36,19 @@ mod config;
 mod logging;
 mod aur;
 
-const VERSION: &str = "1.6.0";
+// New modules
+mod flatpak;
+mod snap;
+mod appimage;
+mod containers;
+mod tui;
+mod security;
+mod deps;
+mod rollback;
+
+const VERSION: &str = "2.0.0";
 const LONG_VERSION: &str = concat!(
-    "1.6.0\n",
+    "2.0.0\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
@@ -86,6 +96,71 @@ struct Cli {
     benchmark: bool,
     #[arg(long, help = "Bypass any confirmation prompts")]
     noconfirm: bool,
+    
+    // TUI
+    #[arg(short = 'T', long, help = "Launch interactive TUI dashboard")]
+    tui: bool,
+    
+    // Flatpak commands
+    #[arg(long, help = "Install a Flatpak application")]
+    flatpak_install: Option<String>,
+    #[arg(long, help = "Remove a Flatpak application")]
+    flatpak_remove: Option<String>,
+    #[arg(long, help = "Search Flatpak applications")]
+    flatpak_search: Option<String>,
+    #[arg(long, help = "Update all Flatpak applications")]
+    flatpak_update: bool,
+    #[arg(long, help = "List installed Flatpak applications")]
+    flatpak_list: bool,
+    
+    // Snap commands
+    #[arg(long, help = "Install a Snap package")]
+    snap_install: Option<String>,
+    #[arg(long, help = "Remove a Snap package")]
+    snap_remove: Option<String>,
+    #[arg(long, help = "Search Snap packages")]
+    snap_search: Option<String>,
+    #[arg(long, help = "Refresh all Snap packages")]
+    snap_refresh: bool,
+    #[arg(long, help = "List installed Snap packages")]
+    snap_list: bool,
+    
+    // AppImage commands
+    #[arg(long, help = "Install an AppImage from URL")]
+    appimage_install: Option<String>,
+    #[arg(long, help = "List installed AppImages")]
+    appimage_list: bool,
+    #[arg(long, help = "Remove an AppImage")]
+    appimage_remove: Option<String>,
+    
+    // Security
+    #[arg(long, help = "Check for CVE vulnerabilities")]
+    check_cve: bool,
+    #[arg(long, help = "Enable sandbox for AUR builds")]
+    sandbox: bool,
+    #[arg(long, help = "Show security scan of PKGBUILD")]
+    security_scan: Option<String>,
+    
+    // Rollback
+    #[arg(long, help = "Create a system snapshot before operation")]
+    snapshot: bool,
+    #[arg(long, help = "List system snapshots")]
+    snapshots: bool,
+    #[arg(long, help = "Rollback to a snapshot by ID")]
+    rollback_to: Option<u32>,
+    
+    // Download options
+    #[arg(long, help = "Download rate limit in KB/s")]
+    rate_limit: Option<u64>,
+    #[arg(long, help = "Show cache statistics")]
+    cache_stats: bool,
+    
+    // Lock file
+    #[arg(long, help = "Generate a lock file")]
+    lock: bool,
+    #[arg(long, help = "Check lock file differences")]
+    lock_diff: bool,
+    
     #[arg(value_name = "TARGETS")]
     targets: Vec<String>,
 }
@@ -138,11 +213,215 @@ fn handle_corrupt_db() -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    if !cli.sync && !cli.sys_upgrade && !cli.remove && !cli.search && !cli.aur && !cli.history && !cli.clean && !cli.news && !cli.health && !cli.rank_mirrors && !cli.clean_orphans && !cli.info && !cli.benchmark && cli.targets.is_empty() {
+    
+    // Check if any action was specified
+    let has_action = cli.sync || cli.sys_upgrade || cli.remove || cli.search || cli.aur 
+        || cli.history || cli.clean || cli.news || cli.health || cli.rank_mirrors 
+        || cli.clean_orphans || cli.info || cli.benchmark || cli.tui
+        || cli.flatpak_install.is_some() || cli.flatpak_remove.is_some() 
+        || cli.flatpak_search.is_some() || cli.flatpak_update || cli.flatpak_list
+        || cli.snap_install.is_some() || cli.snap_remove.is_some()
+        || cli.snap_search.is_some() || cli.snap_refresh || cli.snap_list
+        || cli.appimage_install.is_some() || cli.appimage_list || cli.appimage_remove.is_some()
+        || cli.check_cve || cli.security_scan.is_some()
+        || cli.snapshot || cli.snapshots || cli.rollback_to.is_some()
+        || cli.cache_stats || cli.lock || cli.lock_diff
+        || !cli.targets.is_empty();
+    
+    if !has_action {
         use clap::CommandFactory;
         Cli::command().print_help()?;
         return Ok(());
     }
+    
+    // TUI - launch interactive dashboard
+    if cli.tui {
+        return tui::run();
+    }
+    
+    // Flatpak commands
+    if cli.flatpak_list {
+        if !flatpak::FlatpakClient::is_available() {
+            return Err(anyhow!("Flatpak is not installed"));
+        }
+        let client = flatpak::FlatpakClient::new();
+        let apps = client.list_apps()?;
+        flatpak::display_apps(&apps);
+        return Ok(());
+    }
+    if let Some(ref app_id) = cli.flatpak_install {
+        let client = flatpak::FlatpakClient::new();
+        return client.install(app_id);
+    }
+    if let Some(ref app_id) = cli.flatpak_remove {
+        let client = flatpak::FlatpakClient::new();
+        return client.remove(app_id);
+    }
+    if let Some(ref query) = cli.flatpak_search {
+        let client = flatpak::FlatpakClient::new();
+        let results = client.search(query)?;
+        flatpak::display_search_results(&results);
+        return Ok(());
+    }
+    if cli.flatpak_update {
+        let client = flatpak::FlatpakClient::new();
+        return client.update_all();
+    }
+    
+    // Snap commands
+    if cli.snap_list {
+        if !snap::SnapClient::is_available() {
+            return Err(anyhow!("Snap is not installed"));
+        }
+        let client = snap::SnapClient::new();
+        let snaps = client.list()?;
+        snap::display_snaps(&snaps);
+        return Ok(());
+    }
+    if let Some(ref name) = cli.snap_install {
+        let client = snap::SnapClient::new();
+        return client.install(name);
+    }
+    if let Some(ref name) = cli.snap_remove {
+        let client = snap::SnapClient::new();
+        return client.remove(name);
+    }
+    if let Some(ref query) = cli.snap_search {
+        let client = snap::SnapClient::new();
+        let results = client.search(query)?;
+        snap::display_search_results(&results);
+        return Ok(());
+    }
+    if cli.snap_refresh {
+        let client = snap::SnapClient::new();
+        return client.refresh_all();
+    }
+    
+    // AppImage commands
+    if cli.appimage_list {
+        let manager = appimage::AppImageManager::new();
+        let apps = manager.list()?;
+        appimage::display_appimages(&apps);
+        return Ok(());
+    }
+    if let Some(ref url) = cli.appimage_install {
+        let manager = appimage::AppImageManager::new();
+        let name = url.split('/').last().unwrap_or("app");
+        manager.install_from_url(name, url).await?;
+        return Ok(());
+    }
+    if let Some(ref name) = cli.appimage_remove {
+        let manager = appimage::AppImageManager::new();
+        return manager.remove(name);
+    }
+    
+    // Security commands
+    if cli.check_cve {
+        println!("{} Checking for known vulnerabilities...", style("::").cyan().bold());
+        let cve_checker = security::CveChecker::new();
+        // Check installed packages
+        if let Ok(handle) = alpm::Alpm::new("/", "/var/lib/pacman") {
+            let localdb = handle.localdb();
+            let packages: Vec<_> = localdb.pkgs().iter()
+                .map(|p| (p.name().to_string(), p.version().to_string()))
+                .collect();
+            let vulns = cve_checker.check_packages(&packages).await?;
+            if vulns.is_empty() {
+                println!("{} No known vulnerabilities found", style("✓").green().bold());
+            } else {
+                for (pkg, issues) in &vulns {
+                    println!("{} {} has {} known vulnerabilities:", 
+                        style("!").red().bold(),
+                        style(pkg).yellow(),
+                        issues.len());
+                    security::cve::display_vulnerabilities(issues);
+                }
+            }
+        }
+        return Ok(());
+    }
+    if let Some(ref pkgbuild_path) = cli.security_scan {
+        println!("{} Scanning PKGBUILD: {}", style("::").cyan().bold(), pkgbuild_path);
+        let content = fs::read_to_string(pkgbuild_path)?;
+        let report = security::MalwareDetector::new().scan(&content);
+        let sec_manager = security::SecurityManager::new();
+        sec_manager.display_report(&security::SecurityReport {
+            malware: Some(report.clone()),
+            vulnerabilities: Vec::new(),
+            trust_level: security::TrustLevel::Unknown,
+            trust_score: report.score,
+            overall_safe: report.is_safe(),
+            warnings: Vec::new(),
+            blockers: Vec::new(),
+        });
+        return Ok(());
+    }
+    
+    // Rollback commands
+    if cli.snapshots {
+        let manager = rollback::RollbackManager::new();
+        let snapshots = manager.list()?;
+        rollback::display_snapshots(&snapshots);
+        return Ok(());
+    }
+    if let Some(id) = cli.rollback_to {
+        let manager = rollback::RollbackManager::new();
+        return manager.rollback(id);
+    }
+    if cli.snapshot {
+        let manager = rollback::RollbackManager::new();
+        manager.create_snapshot("manual", "User-created snapshot", rollback::SnapshotType::Manual)?;
+        return Ok(());
+    }
+    
+    // Cache stats
+    if cli.cache_stats {
+        let cache_dir = dirs::cache_dir()
+            .map(|p| p.join("pacboost"))
+            .unwrap_or_else(|| std::path::PathBuf::from("/tmp/pacboost-cache"));
+        let cache = downloader::cache::PackageCache::new(cache_dir, 2048)?;
+        downloader::cache::display_cache_stats(cache.stats(), cache.hit_rate());
+        return Ok(());
+    }
+    
+    // Lock file commands
+    if cli.lock {
+        println!("{} Generating lock file...", style("::").cyan().bold());
+        let mut lockfile = deps::lockfile::Lockfile::new();
+        if let Ok(handle) = alpm::Alpm::new("/", "/var/lib/pacman") {
+            for pkg in handle.localdb().pkgs() {
+                lockfile.add_package(deps::lockfile::LockedPackage {
+                    name: pkg.name().to_string(),
+                    version: pkg.version().to_string(),
+                    epoch: None,
+                    pkgrel: "1".to_string(),
+                    arch: pkg.arch().unwrap_or("any").to_string(),
+                    repository: pkg.db().map(|d| d.name().to_string()).unwrap_or_else(|| "local".to_string()),
+                    sha256: None,
+                    dependencies: pkg.depends().iter().map(|d| d.to_string()).collect(),
+                    source: deps::lockfile::PackageSource::Official { repo: "local".to_string() },
+                });
+            }
+        }
+        lockfile.save_default()?;
+        println!("{} Lock file saved", style("✓").green().bold());
+        return Ok(());
+    }
+    if cli.lock_diff {
+        if let Ok(lockfile) = deps::lockfile::Lockfile::load_default() {
+            if let Ok(handle) = alpm::Alpm::new("/", "/var/lib/pacman") {
+                let installed: Vec<_> = handle.localdb().pkgs().iter()
+                    .map(|p| (p.name().to_string(), p.version().to_string()))
+                    .collect();
+                let diff = lockfile.diff(&installed);
+                diff.display();
+            }
+        } else {
+            println!("{} No lock file found. Run with --lock first.", style("!").yellow().bold());
+        }
+        return Ok(());
+    }
+    
     if let Some(info) = updater::check_for_updates(VERSION) {
         println!("{}", style(format!( ":: a new version of pacboost is available: {} (current: {})", info.version, VERSION)).cyan().bold());
         use std::io::{self, Write};

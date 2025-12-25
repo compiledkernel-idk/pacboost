@@ -2,6 +2,68 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2025-12-25 🎄
+
+### MAJOR RELEASE - Complete Feature Expansion (~9,500 new lines)
+
+#### New Features
+
+- **Interactive TUI Dashboard** (`-T`, `--tui`)
+  - Real-time system metrics (CPU, memory, disk)
+  - Package browser with search
+  - Download queue visualization
+  - Settings panel
+  - Vim-style keyboard navigation
+
+- **External Package Manager Integration**
+  - **Flatpak**: `--flatpak-install`, `--flatpak-remove`, `--flatpak-search`, `--flatpak-update`, `--flatpak-list`
+  - **Snap**: `--snap-install`, `--snap-remove`, `--snap-search`, `--snap-refresh`, `--snap-list`
+  - **AppImage**: `--appimage-install`, `--appimage-list`, `--appimage-remove`
+  - **Docker/Podman**: Container management module
+
+- **Security Hardening**
+  - `--check-cve`: Check installed packages for known vulnerabilities (Arch Security)
+  - `--security-scan <PKGBUILD>`: Advanced malware detection with 30+ threat patterns
+  - `--sandbox`: Sandboxed AUR builds with bubblewrap/firejail
+  - Maintainer trust scoring system
+
+- **System Rollback (Btrfs)**
+  - `--snapshot`: Create system snapshot before operations
+  - `--snapshots`: List all snapshots
+  - `--rollback-to <ID>`: Rollback to previous snapshot
+
+- **Dependency Management**
+  - Dependency graph with topological sorting
+  - Conflict detection
+  - `--lock`: Generate lock file for reproducible builds
+  - `--lock-diff`: Show differences from lock file
+
+- **Download Enhancements**
+  - Smart package cache with LRU eviction
+  - SHA256 deduplication
+  - `--cache-stats`: View cache statistics
+  - Rate limiting support
+
+#### New Modules (21 files)
+
+```
+src/flatpak/mod.rs, remote.rs     (~750 lines)
+src/snap/mod.rs, store.rs         (~650 lines)
+src/appimage/mod.rs               (~400 lines)
+src/containers/mod.rs             (~420 lines)
+src/tui/mod.rs, app.rs, ui.rs, widgets.rs, events.rs  (~1,600 lines)
+src/security/mod.rs, malware.rs, sandbox.rs, cve.rs, trust.rs  (~1,600 lines)
+src/deps/mod.rs, lockfile.rs, solver.rs  (~760 lines)
+src/rollback/mod.rs               (~350 lines)
+src/downloader/cache.rs           (~350 lines)
+```
+
+#### Tests
+- 71 unit tests, all passing
+- Comprehensive test coverage for new modules
+
+---
+
 ## v1.6.0
 - **New Feature**: Insanely fast segmented parallel downloader
 - **New Feature**: Multi-mirror racing with intelligent failover
