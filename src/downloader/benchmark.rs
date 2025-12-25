@@ -48,8 +48,8 @@ impl BenchmarkResult {
 /// Run benchmark on a set of mirrors with multiple iterations for scientific accuracy
 pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Vec<BenchmarkResult>> {
     const ITERATIONS: usize = 3;
-    println!("{}", style(":: Running scientifically rigorous benchmark...").bold().cyan());
-    println!("   Testing {} mirrors with {} KB test downloads ({} iterations)\n", mirrors.len(), test_size_kb, ITERATIONS);
+    println!("{}", style(":: Running benchmark...").bold().cyan());
+    println!("   {} mirrors | {} KB test size | {} iterations\n", mirrors.len(), test_size_kb, ITERATIONS);
 
     let client = Client::builder()
         .timeout(Duration::from_secs(30))

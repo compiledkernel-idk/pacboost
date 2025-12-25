@@ -243,7 +243,7 @@ impl SnapClient {
             }
         }
 
-        println!("{} {} installed successfully",
+        println!("{} {} installed",
             style("::").green().bold(),
             style(name).white().bold());
 

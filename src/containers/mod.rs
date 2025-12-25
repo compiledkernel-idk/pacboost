@@ -199,7 +199,7 @@ impl ContainerManager {
             return Err(anyhow!("Failed to pull {}", image));
         }
 
-        println!("{} {} pulled successfully",
+        println!("{} {} pulled",
             style("::").green().bold(),
             style(image).white().bold());
 
@@ -325,7 +325,7 @@ impl ContainerManager {
             return Err(anyhow!("Build failed"));
         }
 
-        println!("{} {} built successfully",
+        println!("{} {} built",
             style("::").green().bold(),
             style(tag).white().bold());
 

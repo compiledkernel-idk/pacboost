@@ -439,7 +439,7 @@ async fn main() -> Result<()> {
             if input.trim().is_empty() || input.trim().to_lowercase().starts_with('y') {
                 if let Err(e) = updater::perform_update(info) {
                     eprintln!("{} update failed: {}", style("error:").red().bold(), e);
-                } else { println!("   please restart pacboost."); return Ok(()); }
+                } else { println!("   restart pacboost to apply changes."); return Ok(()); }
             }
         }
     }
@@ -449,7 +449,7 @@ async fn main() -> Result<()> {
     let spinner_style = ProgressStyle::default_spinner().tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏").template("{spinner:.cyan} {msg}")?;
     let pb = ProgressBar::new_spinner();
     pb.set_style(spinner_style.clone());
-    pb.set_message("initializing...");
+    pb.set_message("initializing transaction...");
     pb.enable_steady_tick(Duration::from_millis(80));
     let mut manager = alpm_manager::AlpmManager::new()?;
     pb.finish_and_clear();
@@ -649,7 +649,7 @@ async fn main() -> Result<()> {
 
     if !pkgs_add.is_empty() || !pkgs_remove.is_empty() {
         if cli.downloadonly {
-             println!("{}", style(":: packages downloaded successfully.").bold().green());
+             println!("{}", style(":: packages downloaded.").bold().green());
              let _ = manager.handle.trans_release();
         } else {
             println!("{}", style(":: committing transaction...").bold());
@@ -987,7 +987,7 @@ fn build_aur(pkg_name: &str, build_dir: &str) -> Result<()> {
                 .status()?
         } else {
             println!("{}", style("! warning: running as root. makepkg cannot run as root.").yellow());
-            println!("{}", style("  please run pacboost as a normal user or with sudo.").yellow());
+            println!("{}", style("  run pacboost as a normal user or with sudo.").yellow());
             return Err(anyhow!("cannot build AUR package as root without SUDO_USER"));
         }
     } else {
@@ -1003,7 +1003,7 @@ fn build_aur(pkg_name: &str, build_dir: &str) -> Result<()> {
         return Err(anyhow!("makepkg failed for {} with exit code {:?}", pkg_name, status.code()));
     }
     
-    println!("{}", style(format!(":: {} installed successfully.", pkg_name)).green().bold());
+    println!("{}", style(format!(":: {} installed.", pkg_name)).green().bold());
     Ok(())
 }
 

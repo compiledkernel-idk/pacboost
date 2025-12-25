@@ -252,7 +252,7 @@ impl RollbackManager {
         let meta_content = serde_json::to_string_pretty(&snapshot)?;
         fs::write(snapshot_path.join(SNAPSHOT_META), meta_content)?;
 
-        println!("{} Snapshot {} created successfully",
+        println!("{} Snapshot {} created",
             style("::").green().bold(),
             style(id).white().bold());
 

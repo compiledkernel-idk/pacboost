@@ -193,7 +193,7 @@ pub async fn rank_mirrors(top: usize) -> Result<()> {
     }
     
     fs::write(mirrorlist_path, new_content)?;
-    println!("{}", style(":: mirrorlist updated successfully.").green().bold());
+    println!("{}", style(":: mirrorlist updated.").green().bold());
     
     Ok(())
 }

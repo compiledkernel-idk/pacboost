@@ -228,7 +228,7 @@ impl FlatpakClient {
             return Err(anyhow!("Failed to install {}", app_id));
         }
 
-        println!("{} {} installed successfully",
+        println!("{} {} installed",
             style("::").green().bold(),
             style(app_id).white().bold());
 

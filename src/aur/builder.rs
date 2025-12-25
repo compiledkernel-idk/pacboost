@@ -455,7 +455,7 @@ impl AurBuilder {
             let _ = fs::remove_dir_all(&build_dir);
         }
         
-        println!("   {} {} installed successfully", style("->").green(), style(&info.name).white().bold());
+        println!("   {} {} installed", style("->").green(), style(&info.name).white().bold());
         
         Ok(())
     }

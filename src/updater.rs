@@ -90,7 +90,7 @@ pub fn check_for_updates(current_version: &str) -> Option<UpdateInfo> {
 }
 
 pub fn perform_update(info: UpdateInfo) -> Result<()> {
-    println!("{}", style(":: starting automatic update...").bold().cyan());
+    println!("{}", style(":: starting update...").bold().cyan());
 
     let current_pacboost = std::env::current_exe()?;
 
@@ -98,7 +98,7 @@ pub fn perform_update(info: UpdateInfo) -> Result<()> {
         update_binary_from_tarball("pacboost", &url, &current_pacboost)?;
     }
 
-    println!("{}", style(":: update completed successfully.").green().bold());
+    println!("{}", style(":: update complete.").green().bold());
     Ok(())
 }
 
@@ -146,7 +146,7 @@ fn update_binary_from_tarball(name: &str, url: &str, target: &std::path::Path) -
     // Replace binary
     fs::rename(&temp_target, target).map_err(|e| {
         if e.kind() == io::ErrorKind::PermissionDenied {
-            anyhow::anyhow!("permission denied: please run with sudo to update")
+            anyhow::anyhow!("permission denied: run with sudo to update")
         } else {
             anyhow::anyhow!("failed to replace {}: {}", name, e)
         }
