@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2025-12-25
+
+### Fixed
+- **Documentation**: Professional rewrite of README (removed excessive emojis, clarified system architecture)
+- **Metadata**: Updated versioning across all project files
+
+---
+
 ## [2.1.0] - 2025-12-25
 
 ### Fixed
