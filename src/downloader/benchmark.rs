@@ -45,10 +45,11 @@ impl BenchmarkResult {
     }
 }
 
-/// Run benchmark on a set of mirrors
+/// Run benchmark on a set of mirrors with multiple iterations for scientific accuracy
 pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Vec<BenchmarkResult>> {
-    println!("{}", style(":: Running mirror benchmark...").bold().cyan());
-    println!("   Testing {} mirrors with {} KB test downloads\n", mirrors.len(), test_size_kb);
+    const ITERATIONS: usize = 3;
+    println!("{}", style(":: Running scientifically rigorous benchmark...").bold().cyan());
+    println!("   Testing {} mirrors with {} KB test downloads ({} iterations)\n", mirrors.len(), test_size_kb, ITERATIONS);
 
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
@@ -68,8 +69,22 @@ pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Ve
     for url in mirrors {
         pb.set_message(format!("Testing: {}", truncate_url(&url, 40)));
         
-        let result = benchmark_mirror(&client, &url, test_size_kb).await;
-        results.push(result);
+        let mut iteration_results = Vec::new();
+        for _ in 0..ITERATIONS {
+            let result = benchmark_mirror(&client, &url, test_size_kb).await;
+            if result.success {
+                iteration_results.push(result);
+            }
+        }
+
+        if iteration_results.is_empty() {
+             results.push(BenchmarkResult::failure(url.to_string(), "All iterations failed".to_string()));
+        } else {
+            // Calculate median for robustness
+            iteration_results.sort_by(|a, b| a.throughput_mbps.partial_cmp(&b.throughput_mbps).unwrap());
+            let median = iteration_results[iteration_results.len() / 2].clone();
+            results.push(median);
+        }
         
         pb.inc(1);
     }

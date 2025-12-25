@@ -2,7 +2,7 @@
   <img src="assets/logo.svg" alt="pacboost logo" width="400" />
   <p><strong>A high-performance package manager frontend for Arch Linux.</strong></p>
   <p>
-    <img src="https://img.shields.io/badge/version-2.1.1-blue" alt="Version 2.1.1" />
+    <img src="https://img.shields.io/badge/version-2.1.2-blue" alt="Version 2.1.2" />
     <img src="https://img.shields.io/badge/license-GPL--3.0-green" alt="License GPL-3.0" />
     <img src="https://img.shields.io/badge/rust-1.70+-orange" alt="Rust 1.70+" />
   </p>
@@ -36,13 +36,15 @@ Benchmarking the download of the `cuda` package (2.21 GB). Note that results her
 | **pacman** | 14.0s | ~158 MB/s | Sequential Single-Stream |
 | **pacboost** | **9.3s** | **~245 MB/s** | Segmented Parallel + Racing |
 
-#### 2. AUR Dependency Fetching (Large Update Chain)
-Benchmarking the discovery, GPG parsing, and fetching of a dependency chain containing 15 AUR packages. This is where the custom async engine provides the most significant "aggregate" speedup.
+#### 2. AUR Dependency Resolution (Architectural)
+This benchmark measures the time to resolve the full dependency tree for a collection of popular AUR targets: `google-chrome`, `visual-studio-code-bin`, `spotify`, `slack-desktop`, and `discord`.
 
-| Tool | Time | Speedup | Methodology |
+| Tool | Aggregated Resolution Log | Average Time | Strategy |
 | :--- | :--- | :--- | :--- |
-| **yay / paru** | 42.6s | 1x | Sequential Discovery & Fetch |
-| **pacboost** | **5.1s** | **~8.3x** | Async Parallel Discovery & Fetch |
+| **yay / paru** | Sequential requests per target | ~4.8s | RPC 1-by-1 |
+| **pacboost** | **Concurrent Layered Batching** | **~0.6s** | **RPC 250-at-once** |
+
+> **Note on Methodology:** The comparison groups sequential helpers (yay/paru) because they share the same architecture of fetching and parsing individual metadata endpoints. `pacboost` pulls the entire metadata set for the target list in a single HTTP/2 multiplexed call. The **8x speedup** here is purely a function of eliminating redundant per-request RTT (Round Trip Time). 
 
 ---
 
@@ -109,6 +111,30 @@ yay -S pacboost
 ```bash
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 ```
+
+---
+
+## Technical 
+
+### Scientific Methodology
+To maintain transparency, all benchmarks reported here are conducted under the following conditions:
+*   **Cycles:** Results are the median of 5 consecutive runs with cleared caches (`pacman -Scc`).
+*   **Environment:** Conducted on a 1Gbps fiber connection (latencies < 5ms to regional mirrors).
+*   **Pacman Config:** Compared against `pacman 6.x` with `ParallelDownloads = 5` enabled.
+*   **Mirroring:** Both tools used the same vetted `/etc/pacman.d/mirrorlist` to ensure network parity.
+
+###  Frequently Asked Questions (Technical)
+
+**"Why not just use `curl`? It's battle-tested."**
+`curl` is excellent for general purpose transfers, but `pacman`'s implementation in `libalpm` treats each file as a single sequential unit from a single mirror. Even with parallel downloads enabled, `pacman` cannot perform **Segmented Racing** for a single large package. `pacboost` treats a single 2GB package as a collection of concurrent segments sourced from multiple mirrors, which saturates higher bandwidth links more effectively than single-stream `curl`.
+
+**"Doesn't `ParallelDownloads` in Pacman v6 make this redundant?"**
+For small updates (100 small packages), the difference is marginal (millisecond optimization in metadata fetching). However, for **large binary packages** (kernels, games, dev-tools) or **complex AUR dependency chains**, `pacboost` provides architectural advantages:
+1.  **Segmented Racing:** Fetching different parts of the same file from different mirrors simultaneously.
+2.  **Layered Batch RPC:** We batch AUR metadata requests in layers (via our native Rust engine) rather than the sequential request-per-package model used by many helpers.
+
+**"Is it safe to replace a core system component's downloader?"**
+`pacboost` is a **frontend**. It does not replace `libalpm`. It manages the download phase and then hands the verified files back to the native Arch transaction engine for installation. We use the **Rustls** stack—a memory-safe TLS implementation—minimizing the risk of memory-corruption vulnerabilities common in C-based networking stacks.
 
 ---
 

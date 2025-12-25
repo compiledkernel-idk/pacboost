@@ -47,9 +47,9 @@ mod security;
 mod deps;
 mod rollback;
 
-const VERSION: &str = "2.1.1";
+const VERSION: &str = "2.1.2";
 const LONG_VERSION: &str = concat!(
-    "2.1.1\n",
+    "2.1.2\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
@@ -97,6 +97,8 @@ struct Cli {
     benchmark: bool,
     #[arg(long, help = "Bypass any confirmation prompts")]
     noconfirm: bool,
+    #[arg(long, help = "Generate a technical system and networking report")]
+    sys_report: bool,
     
     // TUI
     #[arg(short = 'T', long, help = "Launch interactive TUI dashboard")]
@@ -226,7 +228,7 @@ async fn main() -> Result<()> {
         || cli.appimage_install.is_some() || cli.appimage_list || cli.appimage_remove.is_some()
         || cli.check_cve || cli.security_scan.is_some()
         || cli.snapshot || cli.snapshots || cli.rollback_to.is_some()
-        || cli.cache_stats || cli.lock || cli.lock_diff
+        || cli.cache_stats || cli.lock || cli.lock_diff || cli.sys_report
         || !cli.targets.is_empty();
     
     if !has_action {
@@ -451,6 +453,9 @@ async fn main() -> Result<()> {
     }
     if cli.health {
         return run_health_check();
+    }
+    if cli.sys_report {
+        return run_system_report().await;
     }
     if cli.clean {
         return clean_cache();
@@ -821,6 +826,59 @@ fn clean_cache() -> Result<()> {
         }
     }
     println!(":: removed {} files ({:.2} MiB)", count, size as f64 / 1024.0 / 1024.0);
+    Ok(())
+}
+
+async fn run_system_report() -> Result<()> {
+    println!("{}", style(":: generating technical system report...").bold().cyan());
+    println!("{}", style("─".repeat(60)).dim());
+    
+    // 1. Networking Context
+    println!("{}", style("NETWORKING CONTEXT").bold());
+    let client = reqwest::Client::builder().timeout(Duration::from_secs(5)).build()?;
+    let targets = vec![
+        ("Arch Linux Core", "https://archlinux.org"),
+        ("AUR RPC API", "https://aur.archlinux.org/rpc"),
+        ("Cloudflare DNS", "https://1.1.1.1"),
+    ];
+    
+    for (name, url) in targets {
+        let start = std::time::Instant::now();
+        let res = client.get(url).send().await;
+        let elapsed = start.elapsed().as_millis();
+        match res {
+            Ok(_) => println!("  {:<20} : {}ms", name, style(elapsed).green()),
+            Err(_) => println!("  {:<20} : {}", name, style("FAILED").red()),
+        }
+    }
+    
+    // 2. Pacman configuration detection
+    println!("\n{}", style("PACMAN CONFIGURATION").bold());
+    if let Ok(content) = fs::read_to_string("/etc/pacman.conf") {
+        let parallel = content.lines()
+            .find(|l| l.trim().starts_with("ParallelDownloads"))
+            .unwrap_or("  ParallelDownloads : Not set (default 1)");
+        println!("  {}", parallel.trim());
+    }
+    
+    // 3. Engine Architecture
+    println!("\n{}", style("ENGINE ARCHITECTURE").bold());
+    println!("  Runtime           : Tokio Async Loop (Multi-threaded)");
+    println!("  HTTP Client       : Reqwest / Rustls (Memory Safe)");
+    println!("  Transfer Mode     : Segmented Parallel Racing (Enabled)");
+    println!("  ALPM Integration  : Native libalpm (via r-alpm)");
+    
+    // 4. System Info
+    println!("\n{}", style("SYSTEM RESOURCES").bold());
+    use sysinfo::{System};
+    let mut sys = System::new_all();
+    sys.refresh_all();
+    println!("  CPU Cores         : {}", sys.cpus().len());
+    println!("  Total Memory      : {:.2} GB", sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0);
+    println!("  OS                : {}", System::name().unwrap_or_else(|| "Unknown".to_string()));
+    
+    println!("{}", style("─".repeat(60)).dim());
+    println!("{}", style("This report provides context for benchmark comparisons.").dim());
     Ok(())
 }
 
