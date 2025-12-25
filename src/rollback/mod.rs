@@ -79,7 +79,7 @@ impl RollbackManager {
         }
     }
 
-    /// Check if btrfs is available
+    /// Check if btrfs is available and properly configured
     pub fn is_available() -> bool {
         // Check if root is btrfs
         let output = Command::new("df")
@@ -87,6 +87,55 @@ impl RollbackManager {
             .output();
 
         output.map(|o| o.status.success()).unwrap_or(false)
+    }
+
+    /// Check if snapshots are properly configured
+    fn check_snapshot_setup(&self) -> Result<()> {
+        // Check if btrfs
+        if !Self::is_available() {
+            return Err(anyhow!(
+                "Btrfs filesystem not detected on root.\n\
+                 Snapshots require a btrfs root filesystem.\n\
+                 To check: df -T / | grep btrfs"
+            ));
+        }
+
+        // Check if /.snapshots exists and is writable
+        if !self.snapshot_dir.exists() {
+            println!("{} Creating snapshot directory at {}...",
+                style("::").cyan().bold(),
+                self.snapshot_dir.display());
+            
+            fs::create_dir_all(&self.snapshot_dir).map_err(|e| {
+                anyhow!(
+                    "Cannot create snapshot directory at {}: {}\n\
+                     You may need to create it manually:\n\
+                     sudo btrfs subvolume create /.snapshots",
+                    self.snapshot_dir.display(), e
+                )
+            })?;
+        }
+
+        // Check if snapshot_dir is writable
+        let test_file = self.snapshot_dir.join(".pacboost_test");
+        if let Err(e) = fs::write(&test_file, "test") {
+            return Err(anyhow!(
+                "Snapshot directory {} is not writable: {}\n\
+                 Make sure /.snapshots is a btrfs subvolume with write access.",
+                self.snapshot_dir.display(), e
+            ));
+        }
+        let _ = fs::remove_file(test_file);
+
+        // Check if btrfs command exists
+        if Command::new("btrfs").arg("--version").output().is_err() {
+            return Err(anyhow!(
+                "btrfs-progs not found. Install with:\n\
+                 sudo pacman -S btrfs-progs"
+            ));
+        }
+
+        Ok(())
     }
 
     /// List all snapshots
@@ -113,41 +162,80 @@ impl RollbackManager {
         Ok(snapshots)
     }
 
-    /// Get next snapshot ID
+    /// Get next snapshot ID (scan existing directories to avoid conflicts)
     fn next_id(&self) -> Result<u32> {
-        let snapshots = self.list()?;
-        Ok(snapshots.last().map(|s| s.id + 1).unwrap_or(1))
+        if !self.snapshot_dir.exists() {
+            return Ok(1);
+        }
+
+        let mut max_id: u32 = 0;
+
+        // Scan all directories in /.snapshots to find the highest ID
+        // This handles existing snapper snapshots that don't have our metadata
+        for entry in fs::read_dir(&self.snapshot_dir)? {
+            let entry = entry?;
+            if entry.path().is_dir() {
+                if let Some(name) = entry.file_name().to_str() {
+                    if let Ok(id) = name.parse::<u32>() {
+                        if id > max_id {
+                            max_id = id;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(max_id + 1)
     }
 
     /// Create a snapshot
     pub fn create_snapshot(&self, name: &str, description: &str, snapshot_type: SnapshotType) -> Result<Snapshot> {
-        if !Self::is_available() {
-            return Err(anyhow!("Btrfs not available on this system"));
-        }
+        // Run preflight checks
+        self.check_snapshot_setup()?;
 
         let id = self.next_id()?;
         let snapshot_path = self.snapshot_dir.join(format!("{}", id));
         
         // Create snapshot directory
-        fs::create_dir_all(&snapshot_path)?;
+        fs::create_dir_all(&snapshot_path).map_err(|e| {
+            anyhow!("Failed to create snapshot directory: {}", e)
+        })?;
 
         println!("{} Creating snapshot {}...",
             style("::").cyan().bold(),
             style(id).yellow().bold());
 
-        // Create btrfs snapshot
-        let status = Command::new("btrfs")
-            .args(["subvolume", "snapshot", "-r"])
-            .arg(&self.root_subvol)
-            .arg(snapshot_path.join("snapshot"))
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .context("Failed to create btrfs snapshot")?;
+        // Find the actual root subvolume path
+        // On many systems, root is mounted from a subvolume like @, @root, etc.
+        let root_subvol = self.detect_root_subvolume()?;
 
-        if !status.success() {
+        // Create btrfs snapshot
+        let output = Command::new("btrfs")
+            .args(["subvolume", "snapshot", "-r"])
+            .arg(&root_subvol)
+            .arg(snapshot_path.join("snapshot"))
+            .output()
+            .context("Failed to execute btrfs command")?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
             fs::remove_dir_all(&snapshot_path)?;
-            return Err(anyhow!("Failed to create snapshot"));
+            
+            if stderr.contains("File exists") {
+                return Err(anyhow!(
+                    "Snapshot target already exists. This may indicate a previous failed snapshot.\n\
+                     Try: sudo rm -rf {}",
+                    snapshot_path.display()
+                ));
+            } else if stderr.contains("Read-only") {
+                return Err(anyhow!(
+                    "Cannot create snapshot: filesystem is read-only.\n\
+                     Your btrfs setup may not support snapshots from the running system.\n\
+                     Consider using snapper or timeshift for btrfs snapshots."
+                ));
+            } else {
+                return Err(anyhow!("Failed to create snapshot: {}", stderr.trim()));
+            }
         }
 
         // Create metadata
@@ -164,11 +252,44 @@ impl RollbackManager {
         let meta_content = serde_json::to_string_pretty(&snapshot)?;
         fs::write(snapshot_path.join(SNAPSHOT_META), meta_content)?;
 
-        println!("{} Snapshot {} created",
+        println!("{} Snapshot {} created successfully",
             style("::").green().bold(),
             style(id).white().bold());
 
         Ok(snapshot)
+    }
+
+    /// Detect the actual root btrfs subvolume
+    fn detect_root_subvolume(&self) -> Result<PathBuf> {
+        // Try to get the subvolume path from /proc/mounts or findmnt
+        let output = Command::new("findmnt")
+            .args(["-n", "-o", "SOURCE", "/"])
+            .output();
+
+        if let Ok(output) = output {
+            if output.status.success() {
+                let source = String::from_utf8_lossy(&output.stdout);
+                let source = source.trim();
+                
+                // Check if it's a subvolume (contains [subvol] or similar)
+                if source.contains('[') {
+                    // Extract device, the subvolume path is in brackets
+                    // Format: /dev/sda1[/@] or /dev/nvme0n1p2[/@root]
+                    if let Some(start) = source.find('[') {
+                        if let Some(end) = source.find(']') {
+                            let subvol = &source[start+1..end];
+                            // For subvolumes like @ or @root, we need to use the mount point
+                            println!("{} Detected root subvolume: {}",
+                                style("::").cyan().bold(),
+                                style(subvol).yellow());
+                        }
+                    }
+                }
+            }
+        }
+
+        // Default to / - this works if / is the top-level subvolume
+        Ok(PathBuf::from("/"))
     }
 
     /// Delete a snapshot
