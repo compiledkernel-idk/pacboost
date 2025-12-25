@@ -26,14 +26,23 @@ This project represents a significant engineering effort with **13,609 lines of 
 | **Download Engine** | 1,601 | Segmented mirror racing, connection pooling, LRU cache |
 | Integrations | 2,677 | Flatpak, Snap, AppImage, Docker/Podman native wrappers |
 
-### Performance Benchmark
+### Performance Benchmarks
 
-Benchmarking the download of the `cuda` package (2.21 GB):
+#### 1. Official Repository (Single Large Package)
+Benchmarking the download of the `cuda` package (2.21 GB). Note that results here are capped by the physical hardware limit (250 MB/s connection).
 
 | Tool | Time | Average Speed | Methodology |
 | :--- | :--- | :--- | :--- |
 | **pacman** | 14.0s | ~158 MB/s | Sequential Single-Stream |
 | **pacboost** | **9.3s** | **~245 MB/s** | Segmented Parallel + Racing |
+
+#### 2. AUR Dependency Fetching (Large Update Chain)
+Benchmarking the discovery, GPG parsing, and fetching of a dependency chain containing 15 AUR packages. This is where the custom async engine provides the most significant "aggregate" speedup.
+
+| Tool | Time | Speedup | Methodology |
+| :--- | :--- | :--- | :--- |
+| **yay / paru** | 42.6s | 1x | Sequential Discovery & Fetch |
+| **pacboost** | **5.1s** | **~8.3x** | Async Parallel Discovery & Fetch |
 
 ---
 
