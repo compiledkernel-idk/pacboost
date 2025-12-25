@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - **Documentation**: Professional rewrite of README (removed excessive emojis, clarified system architecture)
+- **Benchmarks**: Added explicit AUR dependency chain benchmarks to clarify performance claims (8.3x vs sequential helpers)
 - **Metadata**: Updated versioning across all project files
 
 ---

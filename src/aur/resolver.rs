@@ -80,60 +80,56 @@ impl DependencyGraph {
         let mut visited: HashSet<String> = HashSet::new();
         let targets_set: HashSet<String> = targets.into_iter().collect();
         
-        while let Some(pkg_name) = queue.pop_front() {
-            if visited.contains(&pkg_name) {
-                continue;
+        while !queue.is_empty() {
+            let mut current_layer = Vec::new();
+            while let Some(pkg) = queue.pop_front() {
+                if !visited.contains(&pkg) {
+                    visited.insert(pkg.clone());
+                    // Check official/local first
+                    if official_check(&pkg) {
+                        graph.add_official_node(&pkg, "sync");
+                    } else {
+                        current_layer.push(pkg);
+                    }
+                }
             }
-            visited.insert(pkg_name.clone());
             
-            // Check if it's an official package or installed locally first
-            if official_check(&pkg_name) {
-                graph.add_official_node(&pkg_name, "sync");
-                continue;
-            }
+            if current_layer.is_empty() { break; }
             
-            // Fetch from AUR
-            match client.get_info(&pkg_name).await {
-                Ok(info) => {
-                    graph.add_aur_node(info.clone());
-                    
-                    // Queue dependencies
-                    let deps: Vec<String> = info.all_deps()
-                        .into_iter()
-                        .map(|d| parse_dependency(&d).0)
-                        .collect();
-                    
-                    graph.edges.insert(pkg_name.clone(), deps.clone());
-                    
-                    // Update reverse edges
-                    for dep in &deps {
-                        graph.reverse_edges
-                            .entry(dep.clone())
-                            .or_default()
-                            .push(pkg_name.clone());
+            // Fetch the whole layer in parallel via batch RPC
+            match client.get_info_batch(&current_layer).await {
+                Ok(results) => {
+                    let mut found_names = HashSet::new();
+                    for info in results {
+                        found_names.insert(info.name.clone());
+                        graph.add_aur_node(info.clone());
+                        
+                        // Queue dependencies
+                        let deps: Vec<String> = info.all_deps()
+                            .into_iter()
+                            .map(|d| parse_dependency(&d).0)
+                            .collect();
+                        
+                        graph.edges.insert(info.name.clone(), deps.clone());
+                        for dep in &deps {
+                            graph.reverse_edges.entry(dep.clone()).or_default().push(info.name.clone());
+                            if !visited.contains(dep) {
+                                queue.push_back(dep.clone());
+                            }
+                        }
                     }
                     
-                    // Add unvisited deps to queue
-                    for dep in deps {
-                        if !visited.contains(&dep) {
-                            queue.push_back(dep);
+                    // Check for missing targets
+                    for pkg in current_layer {
+                        if !found_names.contains(&pkg) && targets_set.contains(&pkg) {
+                            return Err(anyhow!("Package '{}' not found in AUR or official repositories", pkg));
+                        } else if !found_names.contains(&pkg) {
+                            // Dependency not found (likely virtual)
+                            graph.add_official_node(&pkg, "virtual");
                         }
                     }
                 }
-                Err(_) => {
-                    // Package not found in AUR
-                    // If it's a target package (user requested), this is an error
-                    // If it's a dependency, assume it's a virtual package provided by something else
-                    if targets_set.contains(&pkg_name) {
-                        return Err(anyhow!(
-                            "Package '{}' not found in AUR or official repositories",
-                            pkg_name
-                        ));
-                    } else {
-                        // Assume it's a virtual/provided package - pacman will handle it
-                        graph.add_official_node(&pkg_name, "virtual");
-                    }
-                }
+                Err(e) => return Err(e),
             }
         }
         

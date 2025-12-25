@@ -24,6 +24,7 @@ use comfy_table::Table;
 use comfy_table::presets::UTF8_FULL;
 use std::time::Duration;
 use std::path::Path;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use alpm::TransFlag;
 
@@ -462,7 +463,7 @@ async fn main() -> Result<()> {
     }
     if cli.info {
         if cli.targets.is_empty() { return Err(anyhow!("no package specified for info")); }
-        return show_package_info(&manager, &cli.targets);
+        return show_package_info(&manager, &cli.targets).await;
     }
     if cli.benchmark {
         // Get all configured mirrors from alpm_manager
@@ -670,46 +671,78 @@ fn clean_orphans(manager: &mut alpm_manager::AlpmManager) -> Result<()> {
     Ok(())
 }
 
-fn show_package_info(manager: &alpm_manager::AlpmManager, targets: &[String]) -> Result<()> {
+async fn show_package_info(manager: &alpm_manager::AlpmManager, targets: &[String]) -> Result<()> {
     let db = manager.handle.localdb();
     let sync_dbs = manager.handle.syncdbs();
     
+    let mut aur_targets = Vec::new();
+    let client = aur::AurClient::new();
+    
     for target in targets {
-        let pkg = if let Ok(p) = db.pkg(target.as_str()) {
-            Some(p)
+        if let Ok(p) = db.pkg(target.as_str()) {
+            display_alpm_pkg(&p);
         } else {
-            // Check sync dbs
-            let mut found = None;
+            let mut found = false;
             for sdb in sync_dbs {
                 if let Ok(p) = sdb.pkg(target.as_str()) {
-                    found = Some(p);
+                    display_alpm_pkg(&p);
+                    found = true;
                     break;
                 }
             }
-            found
-        };
-        
-        if let Some(p) = pkg {
-            println!("{}", style(format!("Package: {}", p.name())).bold().cyan());
-            println!("  Version      : {}", p.version());
-            println!("  Description  : {}", p.desc().unwrap_or("-"));
-            println!("  Architecture : {}", p.arch().unwrap_or("-"));
-            println!("  URL          : {}", p.url().unwrap_or("-"));
-            println!("  Licenses     : {:?}", p.licenses().iter().collect::<Vec<_>>());
-            println!("  Groups       : {:?}", p.groups().iter().collect::<Vec<_>>());
-            println!("  Provides     : {:?}", p.provides().iter().map(|d| d.to_string()).collect::<Vec<_>>());
-            println!("  Depends On   : {:?}", p.depends().iter().map(|d| d.to_string()).collect::<Vec<_>>());
-            println!("  Optional Deps: {:?}", p.optdepends().iter().map(|d| d.to_string()).collect::<Vec<_>>());
-            println!("  Required By  : {:?}", p.required_by().iter().collect::<Vec<_>>());
-            println!("  Installed Size: {:.2} MiB", p.isize() as f64 / 1024.0 / 1024.0);
-            println!("  Packager     : {}", p.packager().unwrap_or("None"));
-            println!("  Build Date   : {}", p.build_date());
-            println!("");
-        } else {
-            eprintln!("error: package '{}' not found", target);
+            if !found { aur_targets.push(target.clone()); }
+        }
+    }
+    
+    if !aur_targets.is_empty() {
+        if let Ok(results) = client.get_info_batch(&aur_targets).await {
+            for p in &results {
+                display_aur_pkg(&p);
+            }
+            // Report missing
+            let found_names: HashSet<String> = results.iter().map(|r| r.name.clone()).collect();
+            for t in aur_targets {
+                if !found_names.contains(&t) {
+                    eprintln!("error: package '{}' not found in any repository", t);
+                }
+            }
         }
     }
     Ok(())
+}
+
+fn display_alpm_pkg(p: &alpm::Package) {
+    println!("{}", style(format!("Package: {}", p.name())).bold().cyan());
+    println!("  Version      : {}", p.version());
+    println!("  Description  : {}", p.desc().unwrap_or("-"));
+    println!("  Architecture : {}", p.arch().unwrap_or("-"));
+    println!("  URL          : {}", p.url().unwrap_or("-"));
+    println!("  Licenses     : {:?}", p.licenses().iter().collect::<Vec<_>>());
+    println!("  Groups       : {:?}", p.groups().iter().collect::<Vec<_>>());
+    println!("  Provides     : {:?}", p.provides().iter().map(|d| d.to_string()).collect::<Vec<_>>());
+    println!("  Depends On   : {:?}", p.depends().iter().map(|d| d.to_string()).collect::<Vec<_>>());
+    println!("  Optional Deps: {:?}", p.optdepends().iter().map(|d| d.to_string()).collect::<Vec<_>>());
+    println!("  Required By  : {:?}", p.required_by().iter().collect::<Vec<_>>());
+    println!("  Installed Size: {:.2} MiB", p.isize() as f64 / 1024.0 / 1024.0);
+    println!("  Packager     : {}", p.packager().unwrap_or("None"));
+    println!("  Build Date   : {}", p.build_date());
+    println!("");
+}
+
+fn display_aur_pkg(p: &aur::AurPackageInfo) {
+    println!("{}", style(format!("Package: {} (AUR)", p.name)).bold().green());
+    println!("  Version      : {}", p.version);
+    println!("  Description  : {}", p.description.as_deref().unwrap_or("-"));
+    println!("  URL          : {}", p.url.as_deref().unwrap_or("-"));
+    println!("  Votes        : {}", p.num_votes);
+    println!("  Popularity   : {:.2}", p.popularity);
+    println!("  Maintainer   : {}", p.maintainer.as_deref().unwrap_or("None"));
+    println!("  Licenses     : {:?}", p.license);
+    println!("  Depends On   : {:?}", p.depends);
+    println!("  Make Deps    : {:?}", p.make_depends);
+    println!("  Conflicts    : {:?}", p.conflicts);
+    println!("  Provides     : {:?}", p.provides);
+    println!("");
 }
 async fn fetch_arch_news() -> Result<()> {
     println!("{}", style(":: fetching arch linux news...").bold());
