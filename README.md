@@ -4,7 +4,8 @@
 
 ## Description
 
-Pacboost is a high-performance Arch Linux package manager frontend with advanced security features, TUI dashboard, and minimal interaction.
+Pacboost is a high performance Arch Linux package manager frontend with advanced security features, TUI dashboard, and minimal interaction. Downloadand installation speeds can be 2x and more faster.
+It support official pacman, AUR, Flatpak, Snap, AppImage, Docker and Podman. 
 
 <img src="assets/logo.svg" alt="pacboost logo" width="400" />
 
