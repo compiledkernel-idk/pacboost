@@ -61,4 +61,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Debugging
 
-Pacboost is not an official tool. If pacboost can't build a package, you should first check if `pacman` can successfully build the package. If it can't, then you should report the issue to the maintainer. Otherwise, it is likely an issue with pacboost and should be reported (here)[https://github.com/compiledkernel-idk/pacboost/issues]
+Pacboost is not an official tool. If pacboost can't build a package, you should first check if `pacman` can successfully build the package. If it can't, then you should report the issue to the maintainer. Otherwise, it is likely an issue with pacboost and should be reported [here](https://github.com/compiledkernel-idk/pacboost/issues).
