@@ -305,17 +305,23 @@ async fn download_with_segments(
     let mut join_set: JoinSet<Result<u64>> = JoinSet::new();
     let local_progress = Arc::new(AtomicU64::new(0));
     
-    // Start segment downloads
-    for segment in segments_arc.all() {
+    // Get mirror URLs for round-robin distribution
+    let mirror_urls = mirrors.all_urls();
+    let num_mirrors = mirror_urls.len().max(1);
+    
+    // Start segment downloads with round-robin mirror assignment
+    for (idx, segment) in segments_arc.all().iter().enumerate() {
         let client = client.clone();
         let mirrors = mirrors.clone();
         let file_path = file_path.clone();
         let progress = local_progress.clone();
         let total = total_progress.clone();
         let pb = pb.cloned();
+        let preferred_mirror = idx % num_mirrors;
+        let segment = segment.clone();
 
         join_set.spawn(async move {
-            download_segment(&client, &mirrors, &file_path, segment, progress, total, pb).await
+            download_segment(&client, &mirrors, &file_path, segment, progress, total, pb, preferred_mirror).await
         });
     }
 
@@ -336,13 +342,25 @@ async fn download_segment(
     local_progress: Arc<AtomicU64>,
     total_progress: Arc<AtomicU64>,
     pb: Option<ProgressBar>,
+    preferred_mirror: usize,
 ) -> Result<u64> {
     segment.mark_in_progress();
 
-    // Try mirrors with failover
+    // Try mirrors with failover, starting with preferred mirror (round-robin)
     let mut last_error = None;
+    let all_mirrors = mirrors.all_urls();
+    let num_mirrors = all_mirrors.len();
     
-    for mirror_url in mirrors.all_urls() {
+    // Rotate mirror list to start with preferred mirror
+    let mirror_order: Vec<String> = if num_mirrors > 0 {
+        (0..num_mirrors)
+            .map(|i| all_mirrors[(preferred_mirror + i) % num_mirrors].clone())
+            .collect()
+    } else {
+        all_mirrors
+    };
+    
+    for mirror_url in mirror_order {
         let range = segment.range_header();
         
         match client
@@ -353,7 +371,7 @@ async fn download_segment(
         {
             Ok(response) => {
                 if response.status() == StatusCode::PARTIAL_CONTENT || response.status().is_success() {
-                    // Stream to file
+                    // Stream to file with buffered I/O
                     let mut file = File::options()
                         .write(true)
                         .open(file_path)
@@ -363,12 +381,32 @@ async fn download_segment(
                     
                     let mut stream = response.bytes_stream();
                     let mut bytes_written = 0u64;
+                    let mut buffer = Vec::with_capacity(256 * 1024); // 256KB buffer
                     
                     while let Some(chunk) = stream.next().await {
                         let chunk = chunk?;
-                        file.write_all(&chunk).await?;
+                        buffer.extend_from_slice(&chunk);
                         
-                        let len = chunk.len() as u64;
+                        // Flush buffer when it's large enough
+                        if buffer.len() >= 128 * 1024 {
+                            file.write_all(&buffer).await?;
+                            let len = buffer.len() as u64;
+                            bytes_written += len;
+                            segment.add_progress(len);
+                            local_progress.fetch_add(len, Ordering::Relaxed);
+                            total_progress.fetch_add(len, Ordering::Relaxed);
+                            
+                            if let Some(ref pb) = pb {
+                                pb.inc(len);
+                            }
+                            buffer.clear();
+                        }
+                    }
+                    
+                    // Flush remaining buffer
+                    if !buffer.is_empty() {
+                        file.write_all(&buffer).await?;
+                        let len = buffer.len() as u64;
                         bytes_written += len;
                         segment.add_progress(len);
                         local_progress.fetch_add(len, Ordering::Relaxed);

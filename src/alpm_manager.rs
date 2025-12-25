@@ -157,7 +157,7 @@ impl AlpmManager {
         Ok(repos)
     }
     
-    /// Sync databases using ALL available mirrors with failover
+    /// Sync databases using ALL available mirrors with TURBO failover
     pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, _concurrency: usize) -> Result<()> {
         let mut tasks = Vec::new();
         let sync_dir = Path::new(&self.dbpath).join("sync");
@@ -170,7 +170,7 @@ impl AlpmManager {
                 .collect();
             
             if !servers.is_empty() {
-                tasks.push(crate::downloader::DownloadTask::new(servers, format!("{}.db", db.name())));
+                tasks.push(crate::downloader::TurboTask::new(servers, format!("{}.db", db.name())));
             } else {
                 // Fallback to geo mirror if no servers registered
                 let fallback = vec![format!(
@@ -178,11 +178,13 @@ impl AlpmManager {
                     db.name(),
                     db.name()
                 )];
-                tasks.push(crate::downloader::DownloadTask::new(fallback, format!("{}.db", db.name())));
+                tasks.push(crate::downloader::TurboTask::new(fallback, format!("{}.db", db.name())));
             }
         }
         
-        let engine = crate::downloader::DownloadEngine::new(crate::downloader::DownloadConfig::default())?;
+        // Use TurboEngine for faster database sync
+        let turbo_config = crate::downloader::TurboConfig::default();
+        let engine = crate::downloader::TurboEngine::new(turbo_config)?;
         engine.download_all(tasks, &sync_dir, mp).await?;
         Ok(())
     }

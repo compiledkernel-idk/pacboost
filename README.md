@@ -4,8 +4,14 @@
 
 ## Description
 
-Pacboost is a high performance Arch Linux package manager frontend with advanced security features, TUI dashboard, and minimal interaction. Downloadand installation speeds can be 2x and more faster.
-It support official pacman, AUR, Flatpak, Snap, AppImage, Docker and Podman. 
+Pacboost is a high performance Arch Linux package manager frontend with a powerful Turbo Download Engine, advanced security features, and minimal interaction. Download speeds are typically **2x or more faster** than standard pacman.
+
+It supports official pacman, AUR, Flatpak, Snap, AppImage, Docker and Podman.
+
+- **Turbo Download Engine**: 2x faster than pacman (~240 MB/s vs 100 MB/s) with segmented parallel racing and multi-mirror failover.
+- **Unified Management**: Official, AUR, Flatpak, Snap, and AppImage support.
+- **Safety First**: Automatic system snapshots, malware scanning, and CVE audits.
+- **Host Awareness**: Displays system context for transaction transparency.
 
 <img src="assets/logo.svg" alt="pacboost logo" width="400" />
 
@@ -38,7 +44,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## General Tips
 
-*   **TUI Dashboard**: Launch the interactive dashboard with `pacboost -T`.
 *   **Security Scanning**: Pacboost can scan PKGBUILDs for malware. Use `pacboost --security-scan <pkgbuild>`.
 *   **Benchmarks**: Test mirror speeds with `pacboost --benchmark`.
 *   **Snapshots**: Create system snapshots before operations with `pacboost --snapshot`.
@@ -51,7 +56,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md).
 *   `pacboost <target>` -- Interactively search and install `<target>`.
 *   `pacboost -S <target>` -- Install a specific package.
 *   `pacboost -Syu` -- Synchronize and upgrade (Official + AUR).
-*   `pacboost -T` -- Launch Interactive TUI Dashboard.
 *   `pacboost --check-cve` -- Audit system for known vulnerabilities.
 *   `pacboost --benchmark` -- Benchmark mirror download speeds.
 *   `pacboost --snapshot` -- Create a manual system snapshot.

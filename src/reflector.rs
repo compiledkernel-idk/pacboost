@@ -45,11 +45,13 @@ pub async fn rank_mirrors(top: usize) -> Result<()> {
         return Err(anyhow!("no mirrors found in {}", mirrorlist_path));
     }
     
-    println!("{}", style(format!( ":: ranking {} mirrors...", mirrors.len())).bold());
+    println!("{}", style(format!(":: processing {} mirrors...", mirrors.len())).bold());
     
-    let pb = ProgressBar::new(mirrors.len() as u64);
-    pb.set_style(ProgressStyle::default_bar()
-        .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
+    // Phase 1: FAST Latency check (HEAD)
+    // We check all mirrors to filter out dead ones and get a rough "closeness" metric
+    let pb_latency = ProgressBar::new(mirrors.len() as u64);
+    pb_latency.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [latency] [{bar:40.cyan/blue}] {pos}/{len} ({eta})")
         .unwrap()
         .progress_chars("#>-"));
         
@@ -57,20 +59,23 @@ pub async fn rank_mirrors(top: usize) -> Result<()> {
         .timeout(std::time::Duration::from_secs(2))
         .build()?;
         
-    let results = Arc::new(Mutex::new(Vec::new()));
+    let initial_results = Arc::new(Mutex::new(Vec::new()));
     
-    // Concurrently test mirrors
     let stream = stream::iter(mirrors.clone())
         .map(|url| {
             let client = client.clone();
-            let pb = pb.clone();
-            let results = results.clone();
+            let pb = pb_latency.clone();
+            let results = initial_results.clone();
             async move {
                 let start = Instant::now();
-                // Just try to fetch the root or a small file to test connection
-                // Standard arch mirrors structure: .../$repo/os/$arch
-                // We'll try to connect to the base URL
-                let test_url = url.replace("$repo", "core").replace("$arch", "x86_64");
+                // Ensure we hit a file, not a directory listing which can be slow to generate
+                let test_url = if url.contains("$repo") {
+                    url.replace("$repo", "core").replace("$arch", "x86_64")
+                } else {
+                    // unexpected format, try appending
+                    format!("{}/core/os/x86_64", url.trim_end_matches('/'))
+                };
+                let test_url = format!("{}/core.db", test_url.trim_end_matches('/'));
                 
                 if client.head(&test_url).send().await.is_ok() {
                     let duration = start.elapsed();
@@ -80,32 +85,105 @@ pub async fn rank_mirrors(top: usize) -> Result<()> {
                 pb.inc(1);
             }
         })
-        .buffer_unordered(20); // Test 20 mirrors at a time
+        .buffer_unordered(50); // High concurrency for HEAD requests
         
     stream.collect::<Vec<_>>().await;
+    pb_latency.finish_and_clear();
     
-    pb.finish_with_message("done");
-    
-    let mut ranked = results.lock().unwrap().clone();
-    ranked.sort_by_key(|k| k.1);
-    
-    if ranked.is_empty() {
+    let mut candidates = initial_results.lock().unwrap().clone();
+    if candidates.is_empty() {
         return Err(anyhow!("all mirrors failed to respond"));
     }
     
+    // Sort by latency to get the candidates for bandwidth testing
+    candidates.sort_by_key(|k| k.1);
+    
+    // Phase 2: BANDWIDTH check (GET)
+    // Take top 20 low-latency mirrors and test actual download speed
+    // Latency != Bandwidth. A closer mirror might be overloaded.
+    let pool_size = std::cmp::min(candidates.len(), 20);
+    let candidates = &candidates[..pool_size];
+    
+    println!("{}", style(format!(":: benchmarking throughput on top {} candidates...", pool_size)).bold());
+    
+    let pb_speed = ProgressBar::new(pool_size as u64);
+    pb_speed.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [speed]   [{bar:40.yellow/red}] {pos}/{len} ({eta})")
+        .unwrap()
+        .progress_chars("#>-"));
+
+    // Use a slightly longer timeout for download tests
+    let dl_client = Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()?;
+        
+    let final_results = Arc::new(Mutex::new(Vec::new()));
+    
+    let stream_dl = stream::iter(candidates.to_vec())
+        .map(|(url, latency)| {
+            let client = dl_client.clone();
+            let pb = pb_speed.clone();
+            let results = final_results.clone();
+            async move {
+                let test_url = if url.contains("$repo") {
+                    url.replace("$repo", "core").replace("$arch", "x86_64")
+                } else {
+                    format!("{}/core/os/x86_64", url.trim_end_matches('/'))
+                };
+                let test_url = format!("{}/core.db", test_url.trim_end_matches('/'));
+
+                let start = Instant::now();
+                match client.get(&test_url).send().await {
+                    Ok(resp) => {
+                        if let Ok(bytes) = resp.bytes().await {
+                            let duration = start.elapsed();
+                            let size = bytes.len();
+                            let speed = if duration.as_secs_f64() > 0.0 {
+                                size as f64 / duration.as_secs_f64()
+                            } else {
+                                0.0
+                            };
+                            let mut r = results.lock().unwrap();
+                            r.push((url, latency, speed));
+                        }
+                    }
+                    Err(_) => {
+                        // If download fails, drop it or treat as 0 speed
+                    }
+                }
+                pb.inc(1);
+            }
+        })
+        .buffer_unordered(5); // Lower concurrency specifically to avoid bandwidth contention affecting results
+        
+    stream_dl.collect::<Vec<_>>().await;
+    pb_speed.finish_and_clear();
+    
+    let mut ranked = final_results.lock().unwrap().clone();
+    
+    // Mix score: heavily favor speed, but use latency as tiebreaker
+    ranked.sort_by(|a, b| {
+        // Sort DESCENDING by speed
+        b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    
+    if ranked.is_empty() {
+         return Err(anyhow!("bandwidth test failed for all candidates"));
+    }
+
     println!("{}", style(":: top 5 fastest mirrors:").bold().green());
-    for (i, (url, duration)) in ranked.iter().take(5).enumerate() {
-        println!("   {}. {} ({:?})", i + 1, url, duration);
+    for (i, (url, latency, speed)) in ranked.iter().take(5).enumerate() {
+        println!("   {}. {} (latency: {:?}, speed: {:.2} MB/s)", i + 1, url, latency, speed / 1024.0 / 1024.0);
     }
     
     // Backup
     let backup_path = format!("{}.backup", mirrorlist_path);
-    fs::copy(mirrorlist_path, &backup_path)?;
-    println!(":: backup created at {}", backup_path);
+    // Ignore error if backup exists or fails, keep going
+    let _ = fs::copy(mirrorlist_path, &backup_path); 
     
     // Write new mirrorlist
     let mut new_content = String::from("## Generated by pacboost\n");
-    for (url, _) in ranked.iter().take(top) {
+    for (url, _, _) in ranked.iter().take(top) {
         new_content.push_str(&format!("Server = {}\n", url));
     }
     

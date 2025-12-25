@@ -42,14 +42,14 @@ mod flatpak;
 mod snap;
 mod appimage;
 mod containers;
-mod tui;
+
 mod security;
 mod deps;
 mod rollback;
 
-const VERSION: &str = "2.1.2";
+const VERSION: &str = env!("CARGO_PKG_VERSION");
 const LONG_VERSION: &str = concat!(
-    "2.1.2\n",
+    env!("CARGO_PKG_VERSION"), "\n",
     "Copyright (C) 2025  compiledkernel-idk and pacboost contributors\n",
     "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>\n\n",
     "This is free software; you are free to change and redistribute it.\n",
@@ -99,9 +99,12 @@ struct Cli {
     noconfirm: bool,
     #[arg(long, help = "Generate a technical system and networking report")]
     sys_report: bool,
+
+    #[arg(short = 'w', long = "downloadonly", help = "Download packages but do not install/upgrade anything")]
+    downloadonly: bool,
     
     // TUI
-    #[arg(short = 'T', long, help = "Launch interactive TUI dashboard")]
+    #[arg(short = 'T', long, help = "TUI mode (removed)")]
     tui: bool,
     
     // Flatpak commands
@@ -213,7 +216,7 @@ fn handle_corrupt_db() -> Result<()> {
     }
     Ok(())
 }
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
@@ -237,9 +240,10 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     
-    // TUI - launch interactive dashboard
+    // TUI removed for smaller binary
     if cli.tui {
-        return tui::run();
+        println!("TUI has been removed. Use CLI commands instead.");
+        return Ok(());
     }
     
     // Flatpak commands
@@ -425,19 +429,23 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     
-    if let Some(info) = updater::check_for_updates(VERSION) {
-        println!("{}", style(format!( ":: a new version of pacboost is available: {} (current: {})", info.version, VERSION)).cyan().bold());
-        use std::io::{self, Write};
-        print!("   update now? [Y/n] "); io::stdout().flush()?;
-        let mut input = String::new(); io::stdin().read_line(&mut input)?;
-        if input.trim().is_empty() || input.trim().to_lowercase().starts_with('y') {
-            if let Err(e) = updater::perform_update(info) {
-                eprintln!("{} update failed: {}", style("error:").red().bold(), e);
-            } else { println!("   please restart pacboost."); return Ok(()); }
+    // Skip update check when noconfirm is set (for automated/benchmark scenarios)
+    if !cli.noconfirm {
+        if let Some(info) = updater::check_for_updates(VERSION) {
+            println!("{}", style(format!( ":: a new version of pacboost is available: {} (current: {})", info.version, VERSION)).cyan().bold());
+            use std::io::{self, Write};
+            print!("   update now? [Y/n] "); io::stdout().flush()?;
+            let mut input = String::new(); io::stdin().read_line(&mut input)?;
+            if input.trim().is_empty() || input.trim().to_lowercase().starts_with('y') {
+                if let Err(e) = updater::perform_update(info) {
+                    eprintln!("{} update failed: {}", style("error:").red().bold(), e);
+                } else { println!("   please restart pacboost."); return Ok(()); }
+            }
         }
     }
     let _ = handle_lock_file();
-    let _ = handle_corrupt_db();
+    // handle_corrupt_db is expensive, run only on health check
+    
     let spinner_style = ProgressStyle::default_spinner().tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏").template("{spinner:.cyan} {msg}")?;
     let pb = ProgressBar::new_spinner();
     pb.set_style(spinner_style.clone());
@@ -445,6 +453,30 @@ async fn main() -> Result<()> {
     pb.enable_steady_tick(Duration::from_millis(80));
     let mut manager = alpm_manager::AlpmManager::new()?;
     pb.finish_and_clear();
+
+    // Print quick host info for context
+    if (cli.sync || cli.sys_upgrade || !cli.targets.is_empty()) && !cli.search && !cli.info {
+        use sysinfo::System;
+        let mut sys = System::new();
+        sys.refresh_cpu_usage(); // This also gets CPU names usually
+        sys.refresh_memory();
+        
+        let hostname = System::host_name().unwrap_or_else(|| "unknown".to_string());
+        let os = System::name().unwrap_or_else(|| "Linux".to_string());
+        let cpu = sys.cpus().first().map(|c| c.brand()).unwrap_or("Unknown CPU").trim();
+        let ram = sys.total_memory() as f64 / 1024.0 / 1024.0 / 1024.0;
+        
+        println!("{} {} version {} on {}", 
+            style("::").bold().cyan(),
+            style("pacboost").bold(),
+            env!("CARGO_PKG_VERSION"),
+            style(hostname).yellow(),
+        );
+        println!("   {} | {:.1} GB RAM", 
+            style(cpu).dim(),
+            ram
+        );
+    }
     if cli.news {
         return fetch_arch_news().await;
     }
@@ -452,6 +484,7 @@ async fn main() -> Result<()> {
         return show_package_history();
     }
     if cli.health {
+        let _ = handle_corrupt_db();
         return run_health_check();
     }
     if cli.sys_report {
@@ -532,92 +565,97 @@ async fn main() -> Result<()> {
             if !found { aur_targets.push(t.clone()); }
         }
     }
+    // disable check_space for speed - we catch errors on write anyway
+    manager.handle.set_check_space(false);
+    
     manager.handle.trans_prepare().map_err(|e| anyhow!("failed: {}", e))?;
     pb.finish_and_clear();
+    
+    // Convert to Vec for parallel processing
     let pkgs_add: Vec<_> = manager.handle.trans_add().iter().collect();
     let pkgs_remove: Vec<_> = manager.handle.trans_remove().iter().collect();
-    if pkgs_add.is_empty() && pkgs_remove.is_empty() && aur_targets.is_empty() { println!("nothing to do."); let _ = manager.handle.trans_release(); return Ok(()); }
+    
+    if pkgs_add.is_empty() && pkgs_remove.is_empty() && aur_targets.is_empty() { 
+        println!("nothing to do."); 
+        let _ = manager.handle.trans_release(); 
+        return Ok(()); 
+    }
+
     if !pkgs_remove.is_empty() {
         println!("{}", style("\nREMOVAL").red().bold());
         let mut t = Table::new(); t.load_preset(UTF8_FULL); t.set_header(vec!["package", "version", "size"]);
         for p in &pkgs_remove { t.add_row(vec![p.name(), p.version().as_str(), &format!("{:.2} MiB", p.isize() as f64 / 1024.0 / 1024.0)]); }
         println!("{}", t);
     }
+
     if !pkgs_add.is_empty() {
         println!("{}", style("\nINSTALLATION").green().bold());
-        let mut t = Table::new(); t.load_preset(UTF8_FULL); t.set_header(vec!["package", "version", "download", "installed", "repo"]);
-        let (mut td, mut ti) = (0, 0);
-        for p in &pkgs_add {
-            let rs = if let Some(db) = p.db() { db.pkg(p.name()).map(|x| x.download_size()).unwrap_or(p.download_size()) } else { p.download_size() };
-            td += rs; ti += p.isize();
-            let ds = if rs == 0 { "Cached".to_string() } else { format!("{:.2} MiB", rs as f64 / 1024.0 / 1024.0) };
-            t.add_row(vec![p.name(), p.version().as_str(), &ds, &format!("{:.2} MiB", p.isize() as f64 / 1024.0 / 1024.0), p.db().map(|d| d.name()).unwrap_or("-")]);
-        }
-        println!("{}", t);
-        println!("\nTotal Download:  {:.2} MiB", td as f64 / 1024.0 / 1024.0);
-        println!("Total Installed: {:.2} MiB", ti as f64 / 1024.0 / 1024.0);
+        // Quick summary table
+        let count = pkgs_add.len();
+        let total_inst: i64 = pkgs_add.iter().map(|p| p.isize()).sum();
+        let total_dl: i64 = pkgs_add.iter().map(|p| p.download_size()).sum();
+        
+        println!(" Installing {} packages", style(count).bold());
+        println!(" Download:  {:.2} MiB", total_dl as f64 / 1024.0 / 1024.0);
+        println!(" Installed: {:.2} MiB", total_inst as f64 / 1024.0 / 1024.0);
     }
+
     if !cli.noconfirm {
         use std::io::{self, Write};
         print!("\n{} proceed? [Y/n] ", style("::").bold().cyan()); io::stdout().flush()?;
         let mut input = String::new(); io::stdin().read_line(&mut input)?;
         if !input.trim().is_empty() && !input.trim().to_lowercase().starts_with('y') { let _ = manager.handle.trans_release(); return Ok(()); }
     }
+
     if !pkgs_add.is_empty() {
-        let mut to_dl: Vec<(Vec<String>, String)> = Vec::new();
         let cache = Path::new("/var/cache/pacman/pkg/");
+        let mut tasks: Vec<downloader::TurboTask> = Vec::with_capacity(pkgs_add.len() * 2);
+        
         for p in &pkgs_add {
-            let rs = if let Some(db) = p.db() { db.pkg(p.name()).map(|x| x.download_size()).unwrap_or(p.download_size()) } else { p.download_size() };
             let f = p.filename().unwrap_or("unknown");
-            let mut need = true;
-            if let Ok(m) = fs::metadata(cache.join(f)) { if m.len() == rs as u64 { need = false; } }
-            if need {
-                if let Some(db) = p.db() {
-                    // Collect ALL mirrors for this package
-                    let mirrors: Vec<String> = manager.get_repo_mirrors(db.name())
-                        .iter()
-                        .map(|server| format!("{}/{}", server, f))
-                        .collect();
-                    let mirrors = if mirrors.is_empty() {
-                        vec![format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}", db.name(), f)]
-                    } else { mirrors };
-                    to_dl.push((mirrors, f.to_string()));
+            let size = p.download_size();
+            
+            // Skip if cached
+            if let Ok(m) = fs::metadata(cache.join(f)) {
+                if m.len() == size as u64 { continue; }
+            }
+            
+            if let Some(db) = p.db() {
+                let servers: Vec<String> = db.servers().iter().map(|s| format!("{}/{}", s, f)).collect();
+                if !servers.is_empty() {
+                    tasks.push(downloader::TurboTask::new(servers, f.to_string()).with_size(size as u64));
                 }
             }
+            
+            // Sig
             let sf = format!("{}.sig", f);
             if !cache.join(&sf).exists() {
                 if let Some(db) = p.db() {
-                    let sig_mirrors: Vec<String> = manager.get_repo_mirrors(db.name())
-                        .iter()
-                        .map(|server| format!("{}/{}", server, sf))
-                        .collect();
-                    let sig_mirrors = if sig_mirrors.is_empty() {
-                        vec![format!("https://geo.mirror.pkgbuild.com/{}/os/x86_64/{}", db.name(), sf)]
-                    } else { sig_mirrors };
-                    to_dl.push((sig_mirrors, sf));
+                    let sigs: Vec<String> = db.servers().iter().map(|s| format!("{}/{}", s, sf)).collect();
+                    if !sigs.is_empty() {
+                        tasks.push(downloader::TurboTask::new(sigs, sf));
+                    }
                 }
             }
         }
-        if !to_dl.is_empty() {
-            println!("{}", style(":: fetching packages...").bold());
+
+
+        if !tasks.is_empty() {
             let mp = MultiProgress::new();
-            
-            let tasks: Vec<_> = to_dl.into_iter().map(|(mirrors, filename)| {
-                downloader::DownloadTask::new(mirrors, filename)
-            }).collect();
-            
-            let config = downloader::DownloadConfig {
-                max_connections: cli.jobs * 4, // Allow more connections per job
-                ..Default::default()
-            };
-            
-            let engine = downloader::DownloadEngine::new(config)?;
+            let engine = downloader::TurboEngine::new(downloader::TurboConfig::fast_network())?;
             engine.download_all(tasks, cache, Some(mp)).await?;
         }
     }
+
     if !pkgs_add.is_empty() || !pkgs_remove.is_empty() {
-        println!("{}", style(":: committing transaction...").bold());
-        manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
+        if cli.downloadonly {
+             println!("{}", style(":: packages downloaded successfully.").bold().green());
+             let _ = manager.handle.trans_release();
+        } else {
+            println!("{}", style(":: committing transaction...").bold());
+            // This is the ALPM commit which does integrity checks
+            manager.handle.trans_commit().map_err(|e| anyhow!("failed: {}", e))?;
+        }
     }
     
     // Properly release ALPM handle - lock is automatically released on drop

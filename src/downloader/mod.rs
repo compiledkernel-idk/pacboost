@@ -9,21 +9,26 @@
  */
 
 //! High-performance download engine with segmented parallel downloads,
-//! multi-mirror racing, and adaptive parallelism.
+//! multi-mirror racing, adaptive parallelism, and turbo mode for 2x+ speeds.
 
 mod engine;
 mod mirror;
 mod segment;
 mod scheduler;
 mod benchmark;
+mod turbo;
 pub mod cache;
 
+// Legacy exports for backwards compatibility
 pub use engine::{DownloadEngine, DownloadTask, DownloadResult};
 pub use benchmark::run_benchmark;
 
+// NEW: Turbo engine exports (2x+ faster)
+pub use turbo::{TurboEngine, TurboTask, TurboStats, TurboConfig};
+
 use std::time::Duration;
 
-/// Configuration for the download engine
+/// Configuration for the download engine (legacy)
 #[derive(Debug, Clone)]
 pub struct DownloadConfig {
     /// Maximum concurrent connections per host
@@ -42,13 +47,50 @@ pub struct DownloadConfig {
 
 impl Default for DownloadConfig {
     fn default() -> Self {
+        // Get CPU core count for optimal parallelism
+        let cores = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(4);
+        
         Self {
-            max_connections: 16,
-            segments: 8,
-            connect_timeout: Duration::from_secs(5),
-            request_timeout: Duration::from_secs(300),
+            // Aggressive parallelism based on CPU cores
+            max_connections: (cores * 8).max(32),
+            segments: 16,  // More segments for better parallelism
+            connect_timeout: Duration::from_secs(3),
+            request_timeout: Duration::from_secs(120),
             http2: true,
-            segment_threshold: 1024 * 1024, // 1 MiB
+            segment_threshold: 512 * 1024, // 512 KB - segment even small files
         }
+    }
+}
+
+impl DownloadConfig {
+    /// Create a configuration optimized for fast networks
+    pub fn turbo() -> Self {
+        TurboConfig::default().into()
+    }
+}
+
+impl From<TurboConfig> for DownloadConfig {
+    fn from(turbo: TurboConfig) -> Self {
+        Self {
+            max_connections: turbo.max_total_connections,
+            segments: turbo.segments_large,
+            connect_timeout: turbo.connect_timeout,
+            request_timeout: turbo.read_timeout,
+            http2: turbo.http2_multiplexing,
+            segment_threshold: turbo.medium_file_threshold,
+        }
+    }
+}
+
+/// Helper to create a TurboTask from a DownloadTask for migration
+impl From<DownloadTask> for TurboTask {
+    fn from(task: DownloadTask) -> Self {
+        let mut turbo = TurboTask::new(task.mirrors, task.filename);
+        if let Some(size) = task.expected_size {
+            turbo = turbo.with_size(size);
+        }
+        turbo
     }
 }

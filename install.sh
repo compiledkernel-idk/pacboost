@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # pacboost - High-performance Arch Linux package manager frontend.
-# VERSION="2.1.2"
+# VERSION="2.2.0"
 # Updated: 2025-12-25
 # Copyright (C) 2025  compiledkernel-idk and pacboost contributors
 #
@@ -41,24 +41,9 @@ echo ""
 echo ":: Installation successful!"
 echo "   pacboost $TAG installed to /usr/local/bin/pacboost"
 echo ""
-echo "Pacboost v2.0.0 - MAJOR RELEASE!"
-echo ""
-echo "NEW FEATURES:"
-echo "  • Interactive TUI Dashboard (-T, --tui)"
-echo "  • Flatpak integration (--flatpak-*)"
-echo "  • Snap integration (--snap-*)"
-echo "  • AppImage management (--appimage-*)"
-echo "  • Docker/Podman containers (--container-*)"
-echo "  • Security scanning (--check-cve, --security-scan)"
-echo "  • Sandboxed AUR builds (--sandbox)"
-echo "  • Btrfs snapshots & rollback (--snapshot, --rollback-to)"
-echo "  • Lock files for reproducible builds (--lock)"
-echo "  • Smart package caching (--cache-stats)"
-echo ""
 echo "USAGE:"
 echo "   sudo pacboost -Syu        # Full system upgrade"
 echo "   sudo pacboost -S <pkg>    # Install package (official or AUR)"
-echo "   pacboost -T               # Launch TUI dashboard"
 echo "   pacboost -A <query>       # Search AUR"
 echo "   pacboost --flatpak-list   # List Flatpak apps"
 echo ""
