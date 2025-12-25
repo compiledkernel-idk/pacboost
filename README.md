@@ -14,7 +14,7 @@ It support official pacman, AUR, Flatpak, Snap, AppImage, Docker and Podman.
 ### AUR
 
 ```bash
-yay -S pacboost-bin
+yay -S pacboost-bin # or paru
 ```
 
 ### Script
