@@ -1,43 +1,29 @@
-pacboost
-pacboost | AUR: pacboost-bin
-A Rust-based pacman frontend designed to saturate high-bandwidth connections.
-pacman downloads packages sequentially from a single mirror. Pacboost uses a custom async engine (Tokio/Reqwest) to "race" mirrors against each other, downloading segments of the same file from multiple sources simultaneously. This typically results in 2x-8x faster downloads by bypassing per-mirror speed caps.
-It acts as a wrapper for libalpm, preserving your official database integrity while adding features pacman lacks, specifically for the AUR.
-Why use this?
- * Saturate your Bandwidth: If you have gigabit internet but pacman only gives you 5MB/s, this fixes it. It uses segmented downloading to max out your connection.
- * AUR Security: Standard helpers like yay blindly execute PKGBUILDs. Pacboost includes a heuristic malware scanner that parses scripts for suspicious patterns (obfuscation, network calls) before makepkg runs.
- * Unified Wrapper: Handles Official repos, AUR, Flatpak, Snap, and AppImages through a single CLI.
-<img src="assets/logo.svg" alt="pacboost logo" width="300" />
-Installation
-AUR (Recommended)
+# pacboost
+## Install
+### Using yay
+```bash
 yay -S pacboost-bin
-
-From Source
-Requires Rust and base-devel.
-sudo pacman -S --needed base-devel
-git clone [https://github.com/compiledkernel-idk/pacboost.git](https://github.com/compiledkernel-idk/pacboost.git)
-cd pacboost
-makepkg -si
-
-Script (curl | bash)
+```
+# Or use the script
+```bash
 curl -sL [https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh](https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh) | bash
+```
 
-Core Features
- * Segmented Racing Engine: Splits files into chunks and downloads them from the fastest available mirrors concurrently.
- * PKGBUILD Scanner: pacboost --security-scan <pkgbuild> performs static analysis to detect common malware vectors in AUR packages.
- * System Snapshots: Optional automatic snapshots before major transactions (--snapshot).
- * CVE Auditing: Checks your installed packages against known vulnerability databases (--check-cve).
-Common Usage
-| Task | Command |
-|---|---|
-| Install / Search | pacboost <package> |
-| Sync & Update | pacboost -Syu |
-| Check for CVEs | pacboost --check-cve |
-| Benchmark Mirrors | pacboost --benchmark |
-| Manual Snapshot | pacboost --snapshot |
-Architecture & Debugging
-Pacboost is a frontend wrapper. It handles the networking and UI, but hands off the final package installation to libalpm.
- * If a build fails: Check if pacman or makepkg fails on the same package. If pacman works but pacboost doesn't, please open an issue.
- * Database Safety: Since libalpm handles the locking and database writing, your system remains compatible with standard pacman at all times.
-Contributing
-Pull requests are welcome, especially for improving the malware scanner heuristics or adding new mirror protocols. See CONTRIBUTING.md.
+## What is this?
+I made this because pacman is slow. It downloads one file at a time from one mirror. If you have a fast connection, you get capped by the mirror speed.
+Pacboost uses a custom Rust engine to "race" mirrors. It pulls chunks of the same file from multiple mirrors at once. It is built to saturate your bandwidth.
+It is a frontend for libalpm. Your official packages are still verified by the same GPG keys pacman uses.
+Why 17,000 lines?
+This isn't a 100-line python script that just calls curl. It is a full engine written in Rust. It needs that code to handle:
+ * Mirror Racing: Pulling file segments from different sources at the same time.
+ * AUR Malware Scanner: It actually parses PKGBUILDs for bad code or hidden network calls before you build them.
+ * CVE Audit: Scans your system for known vulnerabilities.
+ * Snapshots: Automatically backs up your system before an update.
+Commands
+ * pacboost -Syu : Update your system (Official + AUR)
+ * pacboost <name> : Search and install anything
+ * pacboost --security-scan <file> : Run the malware scanner
+ * pacboost --check-cve : Scan for vulnerabilities
+ * pacboost --benchmark : Test your mirror speeds
+Safety
+This is a wrapper. It uses the official libalpm to talk to your database. Your system stays 100% compatible with standard pacman. If pacboost fails, just use pacman.
