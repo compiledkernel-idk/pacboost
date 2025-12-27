@@ -156,7 +156,6 @@ impl SecurityValidator {
                 (Regex::new(r"/etc/passwd").unwrap(), "Access to passwd file"),
                 (Regex::new(r"~/.ssh").unwrap(), "Access to SSH directory"),
                 (Regex::new(r"\.gnupg").unwrap(), "Access to GPG directory"),
-
                 (
                     Regex::new(r"setuid|setgid").unwrap(),
                     "SUID/SGID modification",
@@ -171,7 +170,6 @@ impl SecurityValidator {
                 ),
             ],
             medium_patterns: vec![
-
                 (Regex::new(r"git\s+clone").unwrap(), "Git clone in PKGBUILD"),
                 (
                     Regex::new(r"pip\s+install").unwrap(),
@@ -190,8 +188,14 @@ impl SecurityValidator {
                 (Regex::new(r"doas\s").unwrap(), "doas usage in PKGBUILD"),
             ],
             low_patterns: vec![
-                (Regex::new(r"rm\s+-rf\s+(/etc|/usr|/var)").unwrap(), "Recursive deletion of system paths"),
-                (Regex::new(r"chmod\s+777").unwrap(), "World-writable permissions (chmod 777)"),
+                (
+                    Regex::new(r"rm\s+-rf\s+(/etc|/usr|/var)").unwrap(),
+                    "Recursive deletion of system paths",
+                ),
+                (
+                    Regex::new(r"chmod\s+777").unwrap(),
+                    "World-writable permissions (chmod 777)",
+                ),
                 (Regex::new(r"chmod\s+[u+]?s").unwrap(), "Setting SUID bit"),
             ],
             suspicious_commands: [
