@@ -1,6 +1,6 @@
 [package]
 name = "pacboost"
-version = "2.3.2"
+version = "2.3.3"
 edition = "2021"
 description = "A high-performance package manager frontend for Arch Linux"
 repository = "https://github.com/compiledkernel-idk/pacboost"
