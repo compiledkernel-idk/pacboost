@@ -158,7 +158,7 @@ impl AlpmManager {
     }
     
     /// Sync databases using ALL available mirrors with TURBO failover
-    pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, _concurrency: usize) -> Result<()> {
+    pub async fn sync_dbs_manual(&mut self, mp: Option<MultiProgress>, _concurrency: usize, force: bool) -> Result<()> {
         let mut tasks = Vec::new();
         let sync_dir = Path::new(&self.dbpath).join("sync");
         

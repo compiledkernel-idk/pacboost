@@ -69,10 +69,10 @@ struct Cli {
     remove: bool,
     #[arg(short = 's', long)]
     search: bool,
-    #[arg(short = 'y', long)]
-    refresh: bool,
-    #[arg(short = 'u', long)]
-    sys_upgrade: bool,
+    #[arg(short = 'y', long, action = clap::ArgAction::Count)]
+    refresh: u8,
+    #[arg(short = 'u', long, action = clap::ArgAction::Count)]
+    sys_upgrade: u8,
     #[arg(short = 'r', long)]
     recursive: bool,
     #[arg(short = 'j', long, default_value_t = 4)]
@@ -220,8 +220,13 @@ fn handle_corrupt_db() -> Result<()> {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     
-    // Check if any action was specified
-    let has_action = cli.sync || cli.sys_upgrade || cli.remove || cli.search || cli.aur 
+    // If no arguments, default to -Syu
+    let mut sync = cli.sync;
+    let mut sys_upgrade = cli.sys_upgrade;
+    let mut refresh = cli.refresh;
+    let mut targets = cli.targets.clone();
+
+    let has_action = sync || sys_upgrade > 0 || cli.remove || cli.search || cli.aur 
         || cli.history || cli.clean || cli.news || cli.health || cli.rank_mirrors 
         || cli.clean_orphans || cli.info || cli.benchmark || cli.tui
         || cli.flatpak_install.is_some() || cli.flatpak_remove.is_some() 
@@ -232,12 +237,13 @@ async fn main() -> Result<()> {
         || cli.check_cve || cli.security_scan.is_some()
         || cli.snapshot || cli.snapshots || cli.rollback_to.is_some()
         || cli.cache_stats || cli.lock || cli.lock_diff || cli.sys_report
-        || !cli.targets.is_empty();
+        || refresh > 0 || !targets.is_empty();
     
     if !has_action {
-        use clap::CommandFactory;
-        Cli::command().print_help()?;
-        return Ok(());
+        // Default to -Syu
+        sync = true;
+        sys_upgrade = 1;
+        refresh = 1;
     }
     
     // TUI removed for smaller binary
@@ -455,7 +461,7 @@ async fn main() -> Result<()> {
     pb.finish_and_clear();
 
     // Print quick host info for context
-    if (cli.sync || cli.sys_upgrade || !cli.targets.is_empty()) && !cli.search && !cli.info {
+    if (sync || sys_upgrade > 0 || !targets.is_empty()) && !cli.search && !cli.info {
         use sysinfo::System;
         let mut sys = System::new();
         sys.refresh_cpu_usage(); // This also gets CPU names usually
@@ -500,8 +506,8 @@ async fn main() -> Result<()> {
         return clean_orphans(&mut manager);
     }
     if cli.info {
-        if cli.targets.is_empty() { return Err(anyhow!("no package specified for info")); }
-        return show_package_info(&manager, &cli.targets).await;
+        if targets.is_empty() { return Err(anyhow!("no package specified for info")); }
+        return show_package_info(&manager, &targets).await;
     }
     if cli.benchmark {
         // Get all configured mirrors from alpm_manager
@@ -509,10 +515,10 @@ async fn main() -> Result<()> {
         return downloader::run_benchmark(mirrors, 512).await.map(|_| ());
     }
     if cli.aur {
-        return handle_aur_search(cli.targets).await;
+        return handle_aur_search(targets).await;
     }
-    if cli.sync && cli.search {
-        let results = manager.search(cli.targets)?;
+    if sync && cli.search {
+        let results = manager.search(targets.clone())?;
         if results.is_empty() { println!("no matches found."); } else {
             for pkg in results {
                 let repo = pkg.db().map(|d| d.name()).unwrap_or("local");
@@ -522,13 +528,13 @@ async fn main() -> Result<()> {
         }
         return Ok(());
     }
-    if cli.refresh {
+    if refresh > 0 {
          println!("{}", style(":: syncing databases...").bold());
          let mp = MultiProgress::new();
-         manager.sync_dbs_manual(Some(mp), cli.jobs).await?;
+         manager.sync_dbs_manual(Some(mp), cli.jobs, refresh > 1).await?;
     }
     let mut aur_targets = Vec::new();
-    if cli.targets.is_empty() && !cli.sys_upgrade { return Ok(()); }
+    if targets.is_empty() && sys_upgrade == 0 { return Ok(()); }
     let pb = ProgressBar::new_spinner();
     pb.set_style(spinner_style.clone());
     pb.set_message("resolving...");
@@ -538,13 +544,13 @@ async fn main() -> Result<()> {
     manager.handle.trans_init(flags).map_err(|e| anyhow!("failed to init trans: {}", e))?;
     if cli.remove {
         let local_db = manager.handle.localdb();
-        for t in &cli.targets {
+        for t in &targets {
             if let Ok(p) = local_db.pkg(t.as_str()) { manager.handle.trans_remove_pkg(p).map_err(|e| anyhow!("failed: {}", e))?; }
             else { return Err(anyhow!("target not found: {}", t)); }
         }
     } else {
-        if cli.sys_upgrade { manager.handle.sync_sysupgrade(false).map_err(|e| anyhow!("failed: {}", e))?; }
-        for t in &cli.targets {
+        if sys_upgrade > 0 { manager.handle.sync_sysupgrade(sys_upgrade > 1).map_err(|e| anyhow!("failed: {}", e))?; }
+        for t in &targets {
             // Easter egg: detect if user is trying to install pacboost with pacboost
             if t == "pacboost" || t == "pacboost-bin" {
                 println!("{}", style("").bold());

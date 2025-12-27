@@ -28,7 +28,7 @@ sudo install -Dm755 target/release/pacboost /usr/bin/pacboost
 
 ## Examples
 
-`pacboost <target>` — Interactively search and install `<target>`.
+`pacboost <target>` — Search and install `<target>` (repos then AUR).
 
 `pacboost` — Alias for `pacboost -Syu`.
 
@@ -36,11 +36,11 @@ sudo install -Dm755 target/release/pacboost /usr/bin/pacboost
 
 `pacboost -Syu` — Full system upgrade (official repos + AUR).
 
-`pacboost -Syy` — Force refresh all databases.
+`pacboost -Syy` — Force refresh all databases (sync repositories).
 
 `pacboost -R <target>` — Remove a package.
 
-`pacboost -Rs <target>` — Remove a package and its orphaned dependencies.
+`pacboost -Rr <target>` — Remove a package and its orphaned dependencies.
 
 `pacboost --benchmark` — Test your mirror speeds.
 
