@@ -19,6 +19,7 @@ Built in Rust with a custom download engine. Your official packages are still ve
 curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 
 
+```
 
 ### Build from source
 ```bash
