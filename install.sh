@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-#
-# pacboost - High-performance Arch Linux package manager frontend.
-# Advanced Installation Script
-#
-# VERSION="2.3.3"
+# VERSION="2.4.0"
 # Copyright (C) 2025 compiledkernel-idk and pacboost contributors
-#
-# This script installs pacboost safely and robustly.
+
+
 
 set -euo pipefail
 
@@ -16,7 +12,6 @@ BINARY_NAME="pacboost"
 INSTALL_DIR="/usr/bin"
 TEMP_DIR="$(mktemp -d)"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -24,7 +19,7 @@ YELLOW='\033[1;33m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
 
-# Helper Functions
+#
 info() { echo -e "${BLUE}::${NC} ${BOLD}$1${NC}"; }
 success() { echo -e "${GREEN}::${NC} ${BOLD}$1${NC}"; }
 warn() { echo -e "${YELLOW}:: Warning:${NC} $1"; }
@@ -37,22 +32,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# 1. Pre-flight Checks
+
 info "Checking system compatibility..."
 
-# Architecture Check
+
 ARCH=$(uname -m)
 if [ "$ARCH" != "x86_64" ]; then
     error "Pacboost currently supports x86_64 only. Detected: $ARCH"
 fi
 
-# OS Check
+
 OS=$(uname -s)
 if [ "$OS" != "Linux" ]; then
     error "Pacboost requires Linux. Detected: $OS"
 fi
 
-# Distro Check (Soft check)
+
 if [ ! -f "/etc/arch-release" ] && ! command -v pacman >/dev/null; then
     warn "This does not appear to be an Arch Linux-based system."
     warn "Pacboost is designed for Arch Linux (pacman/libalpm)."
@@ -63,13 +58,13 @@ if [ ! -f "/etc/arch-release" ] && ! command -v pacman >/dev/null; then
     fi
 fi
 
-# 2. Determine Version
+
 info "Fetching release information..."
 
 if [ -n "${PACBOOST_VERSION:-}" ]; then
     TAG="v${PACBOOST_VERSION#v}"
     info "Using specified version: $TAG"
-    # Note: We assume the user knows what they are doing and the tag exists
+    
 else
     LATEST_URL="https://api.github.com/repos/$REPO/releases/latest"
     HTTP_RESPONSE=$(curl -sL -w "%{http_code}" -o "$TEMP_DIR/release.json" "$LATEST_URL")
@@ -95,7 +90,7 @@ if [ -z "$TAG" ]; then
     error "Failed to parse release tag."
 fi
 
-# 3. Download
+
 TARBALL="pacboost-x86_64-linux.tar.gz"
 DOWNLOAD_URL="https://github.com/$REPO/releases/download/$TAG/$TARBALL"
 
@@ -110,12 +105,12 @@ else
     error "Neither curl nor wget found. Please install one to continue."
 fi
 
-# Verify authenticity (Basic check that it's a valid tarball)
+
 if ! tar -tzf "$TEMP_DIR/$TARBALL" >/dev/null 2>&1; then
     error "Downloaded file is not a valid tarball. Installation failed."
 fi
 
-# 4. Extract
+
 info "Extracting..."
 tar -xzf "$TEMP_DIR/$TARBALL" -C "$TEMP_DIR"
 
@@ -123,10 +118,10 @@ if [ ! -f "$TEMP_DIR/pacboost" ]; then
     error "Extraction failed: 'pacboost' binary not found in archive."
 fi
 
-# 5. Install
+
 info "Installing to $INSTALL_DIR..."
 
-# Check for write permissions or sudo
+
 CAN_WRITE=0
 if [ -w "$INSTALL_DIR" ]; then
     CAN_WRITE=1
@@ -150,7 +145,7 @@ else
     fi
 fi
 
-# 6. Post-Install Verification
+
 if command -v pacboost >/dev/null; then
     INSTALLED_VER=$(pacboost --version 2>/dev/null | head -n 1 | awk '{print $2}')
     success "Installation successful!"
