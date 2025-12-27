@@ -18,10 +18,9 @@
 
 //! Sandboxed execution for PKGBUILDs.
 
-use anyhow::{Result, Context, anyhow};
-use std::process::{Command, Stdio};
+use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
-use std::fs;
+use std::process::{Command, Stdio};
 
 /// Sandbox configuration
 #[derive(Debug, Clone)]
@@ -79,9 +78,7 @@ impl SandboxConfig {
                 PathBuf::from("/bin"),
                 PathBuf::from("/sbin"),
             ],
-            readwrite_paths: vec![
-                build_dir.to_path_buf(),
-            ],
+            readwrite_paths: vec![build_dir.to_path_buf()],
             env_vars: vec![
                 ("HOME".to_string(), "/tmp/build".to_string()),
                 ("USER".to_string(), "nobody".to_string()),
@@ -178,9 +175,12 @@ impl Sandbox {
 
         // Mount proc and tmp
         bwrap_args.extend_from_slice(&[
-            "--proc".to_string(), "/proc".to_string(),
-            "--dev".to_string(), "/dev".to_string(),
-            "--tmpfs".to_string(), "/tmp".to_string(),
+            "--proc".to_string(),
+            "/proc".to_string(),
+            "--dev".to_string(),
+            "/dev".to_string(),
+            "--tmpfs".to_string(),
+            "/tmp".to_string(),
         ]);
 
         // Add readonly mounts
@@ -286,7 +286,12 @@ impl Sandbox {
     }
 
     /// Execute without sandbox (fallback)
-    fn execute_unsandboxed(&self, cmd: &str, args: &[&str], work_dir: &Path) -> Result<SandboxResult> {
+    fn execute_unsandboxed(
+        &self,
+        cmd: &str,
+        args: &[&str],
+        work_dir: &Path,
+    ) -> Result<SandboxResult> {
         tracing::warn!("No sandbox available, running command unsandboxed");
 
         let mut command = Command::new(cmd);
@@ -312,7 +317,7 @@ impl Sandbox {
     }
 
     /// Wrap command with timeout
-    fn wrap_with_timeout(&self, mut cmd: Command, timeout_secs: u64) -> Result<Command> {
+    fn wrap_with_timeout(&self, cmd: Command, _timeout_secs: u64) -> Result<Command> {
         // For now, just use the command as-is. In a real implementation,
         // we'd wrap with `timeout` or use async with tokio timeout.
         Ok(cmd)
@@ -370,7 +375,9 @@ mod tests {
     fn test_sandbox_config_for_build() {
         let config = SandboxConfig::for_build(Path::new("/tmp/build"));
         assert!(!config.network);
-        assert!(config.readwrite_paths.contains(&PathBuf::from("/tmp/build")));
+        assert!(config
+            .readwrite_paths
+            .contains(&PathBuf::from("/tmp/build")));
     }
 
     #[test]

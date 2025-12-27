@@ -5,7 +5,7 @@
 
 //! Adaptive scheduler for parallel downloads.
 
-use std::sync::atomic::{AtomicUsize, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 /// Scheduler for adaptive parallelism based on throughput
@@ -56,12 +56,11 @@ impl Scheduler {
             if current >= target {
                 return false;
             }
-            if self.active_connections.compare_exchange_weak(
-                current,
-                current + 1,
-                Ordering::SeqCst,
-                Ordering::Relaxed,
-            ).is_ok() {
+            if self
+                .active_connections
+                .compare_exchange_weak(current, current + 1, Ordering::SeqCst, Ordering::Relaxed)
+                .is_ok()
+            {
                 return true;
             }
         }
@@ -90,10 +89,12 @@ impl Scheduler {
     /// Adjust parallelism based on throughput
     pub fn adjust(&self) {
         let current_throughput = self.throughput();
-        let last_throughput = self.last_throughput.swap(current_throughput, Ordering::Relaxed);
-        
+        let last_throughput = self
+            .last_throughput
+            .swap(current_throughput, Ordering::Relaxed);
+
         let current_target = self.target_connections.load(Ordering::Relaxed);
-        
+
         // If throughput improved by >10%, try adding more connections
         if current_throughput > last_throughput.saturating_add(last_throughput / 10) {
             let new_target = (current_target + 1).min(self.max_connections);

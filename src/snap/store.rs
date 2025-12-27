@@ -18,7 +18,7 @@
 
 //! Snap Store API client.
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 const SNAP_STORE_API: &str = "https://api.snapcraft.io/v2";
@@ -104,7 +104,8 @@ impl SnapStore {
             urlencoding::encode(query)
         );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Snap-Device-Series", "16")
             .header("Snap-Device-Architecture", "amd64")
@@ -116,11 +117,16 @@ impl SnapStore {
             return Ok(Vec::new());
         }
 
-        let results: SearchResponse = response.json().await
+        let results: SearchResponse = response
+            .json()
+            .await
             .context("Failed to parse search results")?;
 
-        Ok(results.results.into_iter().take(limit).map(|r| {
-            StoreSnap {
+        Ok(results
+            .results
+            .into_iter()
+            .take(limit)
+            .map(|r| StoreSnap {
                 name: r.snap.name,
                 snap_id: r.snap.snap_id,
                 publisher: r.snap.publisher,
@@ -132,8 +138,8 @@ impl SnapStore {
                 media: Vec::new(),
                 ratings_average: None,
                 total_ratings: None,
-            }
-        }).collect())
+            })
+            .collect())
     }
 
     /// Get detailed info about a snap
@@ -144,7 +150,8 @@ impl SnapStore {
             urlencoding::encode(name)
         );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Snap-Device-Series", "16")
             .header("Snap-Device-Architecture", "amd64")
@@ -160,8 +167,7 @@ impl SnapStore {
             return Ok(None);
         }
 
-        let snap: StoreSnap = response.json().await
-            .context("Failed to parse snap info")?;
+        let snap: StoreSnap = response.json().await.context("Failed to parse snap info")?;
 
         Ok(Some(snap))
     }
@@ -179,7 +185,8 @@ impl SnapStore {
             urlencoding::encode(category)
         );
 
-        let response = self.client
+        let response = self
+            .client
             .get(&url)
             .header("Snap-Device-Series", "16")
             .header("Snap-Device-Architecture", "amd64")
@@ -192,8 +199,11 @@ impl SnapStore {
 
         let results: SearchResponse = response.json().await?;
 
-        Ok(results.results.into_iter().take(limit).map(|r| {
-            StoreSnap {
+        Ok(results
+            .results
+            .into_iter()
+            .take(limit)
+            .map(|r| StoreSnap {
                 name: r.snap.name,
                 snap_id: r.snap.snap_id,
                 publisher: r.snap.publisher,
@@ -205,8 +215,8 @@ impl SnapStore {
                 media: Vec::new(),
                 ratings_average: None,
                 total_ratings: None,
-            }
-        }).collect())
+            })
+            .collect())
     }
 }
 

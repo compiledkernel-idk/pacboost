@@ -23,14 +23,14 @@
 //! - Desktop integration
 //! - Update checking via zsync
 
-use anyhow::{Result, Context, anyhow};
+use anyhow::{anyhow, Context, Result};
 use console::style;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use indicatif::{ProgressBar, ProgressStyle};
+use serde::{Deserialize, Serialize};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
-use serde::{Deserialize, Serialize};
-use indicatif::{ProgressBar, ProgressStyle};
+use std::path::PathBuf;
+use std::process::{Command, Stdio};
 
 const APPIMAGEHUB_API: &str = "https://appimage.github.io/feed.json";
 const DEFAULT_APPIMAGE_DIR: &str = "~/.local/bin";
@@ -106,8 +106,7 @@ impl AppImageManager {
     /// Ensure install directory exists
     fn ensure_dir(&self) -> Result<()> {
         if !self.install_dir.exists() {
-            fs::create_dir_all(&self.install_dir)
-                .context("Failed to create AppImage directory")?;
+            fs::create_dir_all(&self.install_dir).context("Failed to create AppImage directory")?;
         }
         if !self.applications_dir.exists() {
             fs::create_dir_all(&self.applications_dir)
@@ -119,22 +118,24 @@ impl AppImageManager {
     /// List installed AppImages
     pub fn list(&self) -> Result<Vec<AppImage>> {
         self.ensure_dir()?;
-        
+
         let mut appimages = Vec::new();
-        
+
         for entry in fs::read_dir(&self.install_dir)? {
             let entry = entry?;
             let path = entry.path();
-            
+
             if path.is_file() {
                 if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
                     if name.to_lowercase().ends_with(".appimage") {
                         let metadata = fs::metadata(&path)?;
                         let executable = metadata.permissions().mode() & 0o111 != 0;
-                        
-                        let desktop_file = self.applications_dir
-                            .join(format!("{}.desktop", name.replace(".AppImage", "").replace(".appimage", "")));
-                        
+
+                        let desktop_file = self.applications_dir.join(format!(
+                            "{}.desktop",
+                            name.replace(".AppImage", "").replace(".appimage", "")
+                        ));
+
                         appimages.push(AppImage {
                             name: name.replace(".AppImage", "").replace(".appimage", ""),
                             version: extract_version(name),
@@ -147,20 +148,22 @@ impl AppImageManager {
                 }
             }
         }
-        
+
         Ok(appimages)
     }
 
     /// Download and install an AppImage from URL
     pub async fn install_from_url(&self, name: &str, url: &str) -> Result<PathBuf> {
         self.ensure_dir()?;
-        
-        println!("{} Installing AppImage: {}",
+
+        println!(
+            "{} Installing AppImage: {}",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let filename = if url.contains(".AppImage") || url.contains(".appimage") {
-            url.split('/').last().unwrap_or(name).to_string()
+            url.split('/').next_back().unwrap_or(name).to_string()
         } else {
             format!("{}.AppImage", name)
         };
@@ -169,15 +172,18 @@ impl AppImageManager {
 
         // Download with progress
         let pb = ProgressBar::new_spinner();
-        pb.set_style(ProgressStyle::default_spinner()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            .template("{spinner:.cyan} {msg}")
-            .unwrap());
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.cyan} {msg}")
+                .unwrap(),
+        );
         pb.set_message(format!("Downloading {}...", name));
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
 
         let client = reqwest::Client::new();
-        let response = client.get(url)
+        let response = client
+            .get(url)
             .send()
             .await
             .context("Failed to download AppImage")?;
@@ -198,30 +204,36 @@ impl AppImageManager {
         perms.set_mode(perms.mode() | 0o755);
         fs::set_permissions(&target_path, perms)?;
 
-        println!("{} {} installed to {}",
+        println!(
+            "{} {} installed to {}",
             style("::").green().bold(),
             style(name).white().bold(),
-            style(target_path.display()).dim());
+            style(target_path.display()).dim()
+        );
 
         Ok(target_path)
     }
 
     /// Install from AppImageHub by name
     pub async fn install_from_hub(&self, name: &str) -> Result<PathBuf> {
-        println!("{} Searching AppImageHub for {}...",
+        println!(
+            "{} Searching AppImageHub for {}...",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let entries = self.search_hub(name).await?;
-        
+
         if entries.is_empty() {
             return Err(anyhow!("No AppImage found for '{}'", name));
         }
 
         let entry = &entries[0];
-        
+
         // Find download link
-        let download_url = entry.links.iter()
+        let download_url = entry
+            .links
+            .iter()
             .find(|l| l.link_type == "Download" || l.link_type.to_lowercase().contains("appimage"))
             .ok_or_else(|| anyhow!("No download link found for {}", name))?;
 
@@ -231,7 +243,8 @@ impl AppImageManager {
     /// Search AppImageHub
     pub async fn search_hub(&self, query: &str) -> Result<Vec<AppImageHubEntry>> {
         let client = reqwest::Client::new();
-        let response = client.get(APPIMAGEHUB_API)
+        let response = client
+            .get(APPIMAGEHUB_API)
             .send()
             .await
             .context("Failed to fetch AppImageHub data")?;
@@ -241,8 +254,9 @@ impl AppImageManager {
         }
 
         let data: serde_json::Value = response.json().await?;
-        
-        let items = data.get("items")
+
+        let items = data
+            .get("items")
             .and_then(|v| v.as_array())
             .ok_or_else(|| anyhow!("Invalid AppImageHub response"))?;
 
@@ -250,10 +264,8 @@ impl AppImageManager {
         let mut results = Vec::new();
 
         for item in items {
-            let name = item.get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            
+            let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
+
             if name.to_lowercase().contains(&query_lower) {
                 if let Ok(entry) = serde_json::from_value::<AppImageHubEntry>(item.clone()) {
                     results.push(entry);
@@ -267,29 +279,32 @@ impl AppImageManager {
     /// Remove an AppImage
     pub fn remove(&self, name: &str) -> Result<()> {
         let appimages = self.list()?;
-        
-        let app = appimages.iter()
+
+        let app = appimages
+            .iter()
             .find(|a| a.name.to_lowercase().contains(&name.to_lowercase()))
             .ok_or_else(|| anyhow!("AppImage '{}' not found", name))?;
 
-        println!("{} Removing AppImage: {}",
+        println!(
+            "{} Removing AppImage: {}",
             style("::").cyan().bold(),
-            style(&app.name).yellow().bold());
+            style(&app.name).yellow().bold()
+        );
 
         // Remove AppImage file
-        fs::remove_file(&app.path)
-            .context("Failed to remove AppImage")?;
+        fs::remove_file(&app.path).context("Failed to remove AppImage")?;
 
         // Remove desktop file if exists
-        let desktop_file = self.applications_dir
-            .join(format!("{}.desktop", app.name));
+        let desktop_file = self.applications_dir.join(format!("{}.desktop", app.name));
         if desktop_file.exists() {
             let _ = fs::remove_file(&desktop_file);
         }
 
-        println!("{} {} removed",
+        println!(
+            "{} {} removed",
             style("::").green().bold(),
-            style(name).white().bold());
+            style(name).white().bold()
+        );
 
         Ok(())
     }
@@ -297,14 +312,17 @@ impl AppImageManager {
     /// Integrate AppImage with desktop (create .desktop file)
     pub fn integrate(&self, name: &str) -> Result<()> {
         let appimages = self.list()?;
-        
-        let app = appimages.iter()
+
+        let app = appimages
+            .iter()
             .find(|a| a.name.to_lowercase().contains(&name.to_lowercase()))
             .ok_or_else(|| anyhow!("AppImage '{}' not found", name))?;
 
-        println!("{} Integrating {} with desktop...",
+        println!(
+            "{} Integrating {} with desktop...",
             style("::").cyan().bold(),
-            style(&app.name).yellow().bold());
+            style(&app.name).yellow().bold()
+        );
 
         // Try to extract icon and desktop file using --appimage-extract
         let extract_result = Command::new(&app.path)
@@ -319,8 +337,14 @@ impl AppImageManager {
                 let desktop_files: Vec<_> = fs::read_dir(&squashfs)
                     .ok()
                     .map(|entries| {
-                        entries.filter_map(|e| e.ok())
-                            .filter(|e| e.path().extension().map(|ext| ext == "desktop").unwrap_or(false))
+                        entries
+                            .filter_map(|e| e.ok())
+                            .filter(|e| {
+                                e.path()
+                                    .extension()
+                                    .map(|ext| ext == "desktop")
+                                    .unwrap_or(false)
+                            })
                             .collect()
                     })
                     .unwrap_or_default();
@@ -344,7 +368,7 @@ impl AppImageManager {
         // Create desktop file
         let desktop_content = desktop_content.unwrap_or_else(|| {
             format!(
-r#"[Desktop Entry]
+                r#"[Desktop Entry]
 Type=Application
 Name={}
 Exec={}
@@ -370,9 +394,8 @@ Categories=Utility;
             .collect::<Vec<_>>()
             .join("\n");
 
-        let desktop_path = self.applications_dir
-            .join(format!("{}.desktop", app.name));
-        
+        let desktop_path = self.applications_dir.join(format!("{}.desktop", app.name));
+
         fs::write(&desktop_path, desktop_content)?;
 
         // Make desktop file executable
@@ -380,9 +403,11 @@ Categories=Utility;
         perms.set_mode(perms.mode() | 0o755);
         fs::set_permissions(&desktop_path, perms)?;
 
-        println!("{} {} integrated with desktop",
+        println!(
+            "{} {} integrated with desktop",
             style("::").green().bold(),
-            style(&app.name).white().bold());
+            style(&app.name).white().bold()
+        );
 
         Ok(())
     }
@@ -390,8 +415,9 @@ Categories=Utility;
     /// Run an AppImage
     pub fn run(&self, name: &str, args: &[String]) -> Result<()> {
         let appimages = self.list()?;
-        
-        let app = appimages.iter()
+
+        let app = appimages
+            .iter()
             .find(|a| a.name.to_lowercase().contains(&name.to_lowercase()))
             .ok_or_else(|| anyhow!("AppImage '{}' not found", name))?;
 
@@ -412,8 +438,9 @@ Categories=Utility;
     /// Check for updates (basic - checks if zsync file exists)
     pub async fn check_update(&self, name: &str) -> Result<bool> {
         let appimages = self.list()?;
-        
-        let app = appimages.iter()
+
+        let app = appimages
+            .iter()
             .find(|a| a.name.to_lowercase().contains(&name.to_lowercase()))
             .ok_or_else(|| anyhow!("AppImage '{}' not found", name))?;
 
@@ -449,7 +476,7 @@ fn extract_version(filename: &str) -> Option<String> {
 
 /// Display AppImages in a table
 pub fn display_appimages(apps: &[AppImage]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
@@ -463,8 +490,16 @@ pub fn display_appimages(apps: &[AppImage]) {
 
     for app in apps {
         let size = format_size(app.size_bytes);
-        let exec_color = if app.executable { Color::Green } else { Color::Red };
-        let int_color = if app.integrated { Color::Green } else { Color::Yellow };
+        let exec_color = if app.executable {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        let int_color = if app.integrated {
+            Color::Green
+        } else {
+            Color::Yellow
+        };
 
         table.add_row(vec![
             Cell::new(&app.name).fg(Color::White),
@@ -500,8 +535,14 @@ mod tests {
 
     #[test]
     fn test_extract_version() {
-        assert_eq!(extract_version("Firefox-120.0.AppImage"), Some("120.0".to_string()));
-        assert_eq!(extract_version("App_v1.2.3_x86_64.AppImage"), Some("1.2.3".to_string()));
+        assert_eq!(
+            extract_version("Firefox-120.0.AppImage"),
+            Some("120.0".to_string())
+        );
+        assert_eq!(
+            extract_version("App_v1.2.3_x86_64.AppImage"),
+            Some("1.2.3".to_string())
+        );
         assert_eq!(extract_version("SimpleApp.AppImage"), None);
     }
 

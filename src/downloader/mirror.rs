@@ -5,7 +5,6 @@
 
 //! Mirror pool with intelligent selection and adaptive failover.
 
-use reqwest::Url;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 
@@ -111,7 +110,7 @@ impl MirrorPool {
 
     /// Get all mirrors sorted by score (best first)
     pub fn ranked(&self) -> Vec<Arc<Mirror>> {
-        let mut mirrors: Vec<_> = self.mirrors.iter().cloned().collect();
+        let mut mirrors: Vec<_> = self.mirrors.to_vec();
         mirrors.sort_by(|a, b| b.score().cmp(&a.score()));
         mirrors
     }

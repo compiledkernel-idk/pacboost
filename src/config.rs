@@ -28,25 +28,25 @@ use std::path::{Path, PathBuf};
 pub struct Config {
     /// Number of concurrent downloads
     pub download_concurrency: usize,
-    
+
     /// Download timeout in seconds
     pub download_timeout_secs: u64,
-    
+
     /// Timeout per mirror in seconds
     pub mirror_timeout_secs: u64,
-    
+
     /// Enable colored output
     pub color: bool,
-    
+
     /// AUR-specific configuration
     pub aur: AurConfig,
-    
+
     /// Mirror configuration
     pub mirrors: MirrorConfig,
-    
+
     /// Cache configuration
     pub cache: CacheConfig,
-    
+
     /// Logging configuration
     pub logging: LoggingConfig,
 }
@@ -72,34 +72,34 @@ impl Default for Config {
 pub struct AurConfig {
     /// Enable security scanning of PKGBUILDs
     pub security_scan: bool,
-    
+
     /// Minimum security score to proceed (0-100)
     pub min_security_score: u32,
-    
+
     /// Automatically install AUR dependencies
     pub auto_deps: bool,
-    
+
     /// Show PKGBUILD diff before building
     pub show_diff: bool,
-    
+
     /// Clean build directory after installation
     pub clean_build: bool,
-    
+
     /// Use ccache for faster rebuilds
     pub use_ccache: bool,
-    
+
     /// Maximum build time in seconds (0 = unlimited)
     pub build_timeout_secs: u64,
-    
+
     /// Number of parallel make jobs (0 = auto-detect)
     pub make_jobs: usize,
-    
+
     /// Disable compression for faster local builds
     pub disable_compression: bool,
-    
+
     /// AUR RPC base URL
     pub rpc_url: String,
-    
+
     /// Build directory path
     pub build_dir: PathBuf,
 }
@@ -114,7 +114,7 @@ impl Default for AurConfig {
             clean_build: true,
             use_ccache: false,
             build_timeout_secs: 0,
-            make_jobs: 0,  // Auto-detect
+            make_jobs: 0, // Auto-detect
             disable_compression: true,
             rpc_url: "https://aur.archlinux.org/rpc/".to_string(),
             build_dir: PathBuf::from("/tmp/pacboost-aur"),
@@ -128,13 +128,13 @@ impl Default for AurConfig {
 pub struct MirrorConfig {
     /// Maximum number of mirrors to try per download
     pub max_mirrors: usize,
-    
+
     /// Track mirror health statistics
     pub track_health: bool,
-    
+
     /// Blacklist slow mirrors after this many failures
     pub blacklist_threshold: u32,
-    
+
     /// Re-test blacklisted mirrors after this many seconds
     pub blacklist_duration_secs: u64,
 }
@@ -156,13 +156,13 @@ impl Default for MirrorConfig {
 pub struct CacheConfig {
     /// Package cache directory
     pub package_dir: PathBuf,
-    
+
     /// AUR metadata cache size (number of entries)
     pub aur_cache_size: usize,
-    
+
     /// Enable build cache for AUR packages
     pub build_cache: bool,
-    
+
     /// Maximum cache size in MB (0 = unlimited)
     pub max_size_mb: u64,
 }
@@ -184,10 +184,10 @@ impl Default for CacheConfig {
 pub struct LoggingConfig {
     /// Log level (trace, debug, info, warn, error)
     pub level: String,
-    
+
     /// Log file path (empty = no file logging)
     pub file: Option<PathBuf>,
-    
+
     /// Enable structured JSON logging
     pub json: bool,
 }
@@ -209,7 +209,7 @@ impl Config {
     /// 3. Environment variables (PACBOOST_*)
     pub fn load() -> Self {
         let mut config = Config::default();
-        
+
         // Try system-wide config
         let system_config = Path::new("/etc/pacboost/pacboost.toml");
         if system_config.exists() {
@@ -219,7 +219,7 @@ impl Config {
                 }
             }
         }
-        
+
         // Try user config
         if let Some(config_dir) = dirs::config_dir() {
             let user_config = config_dir.join("pacboost").join("config.toml");
@@ -231,18 +231,18 @@ impl Config {
                 }
             }
         }
-        
+
         // Apply environment overrides
         config = config.apply_env_overrides();
-        
+
         config
     }
-    
+
     /// Merge another config into this one (other takes precedence for non-default values)
     fn merge(mut self, other: Config) -> Self {
         // Only override if the other value differs from default
         let default = Config::default();
-        
+
         if other.download_concurrency != default.download_concurrency {
             self.download_concurrency = other.download_concurrency;
         }
@@ -255,13 +255,13 @@ impl Config {
         if other.color != default.color {
             self.color = other.color;
         }
-        
+
         // Merge sub-configs
         self.aur = self.aur.merge(other.aur);
-        
+
         self
     }
-    
+
     /// Apply environment variable overrides
     fn apply_env_overrides(mut self) -> Self {
         if let Ok(val) = std::env::var("PACBOOST_CONCURRENCY") {
@@ -269,22 +269,22 @@ impl Config {
                 self.download_concurrency = n;
             }
         }
-        
+
         if let Ok(val) = std::env::var("PACBOOST_AUR_SECURITY_SCAN") {
             self.aur.security_scan = val == "1" || val.to_lowercase() == "true";
         }
-        
+
         if let Ok(val) = std::env::var("PACBOOST_AUR_AUTO_DEPS") {
             self.aur.auto_deps = val == "1" || val.to_lowercase() == "true";
         }
-        
+
         if let Ok(val) = std::env::var("PACBOOST_LOG_LEVEL") {
             self.logging.level = val;
         }
-        
+
         self
     }
-    
+
     /// Validate the configuration
     pub fn validate(&self) -> Result<(), String> {
         if self.download_concurrency == 0 {
@@ -298,7 +298,7 @@ impl Config {
         }
         Ok(())
     }
-    
+
     /// Get the number of make jobs, auto-detecting if set to 0
     pub fn get_make_jobs(&self) -> usize {
         if self.aur.make_jobs == 0 {
@@ -314,7 +314,7 @@ impl Config {
 impl AurConfig {
     fn merge(mut self, other: AurConfig) -> Self {
         let default = AurConfig::default();
-        
+
         if other.security_scan != default.security_scan {
             self.security_scan = other.security_scan;
         }
@@ -336,7 +336,7 @@ impl AurConfig {
         if other.build_dir != default.build_dir {
             self.build_dir = other.build_dir;
         }
-        
+
         self
     }
 }
@@ -344,7 +344,7 @@ impl AurConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_config() {
         let config = Config::default();
@@ -352,19 +352,19 @@ mod tests {
         assert!(config.aur.security_scan);
         assert!(config.aur.auto_deps);
     }
-    
+
     #[test]
     fn test_config_validation() {
         let mut config = Config::default();
         assert!(config.validate().is_ok());
-        
+
         config.download_concurrency = 0;
         assert!(config.validate().is_err());
-        
+
         config.download_concurrency = 100;
         assert!(config.validate().is_err());
     }
-    
+
     #[test]
     fn test_get_make_jobs() {
         let config = Config::default();

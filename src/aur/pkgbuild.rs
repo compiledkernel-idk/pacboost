@@ -21,8 +21,8 @@
 use anyhow::Result;
 use regex::Regex;
 use std::collections::HashSet;
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
 use crate::error::SecuritySeverity;
 
@@ -53,7 +53,7 @@ pub struct Pkgbuild {
     pub backup: Vec<String>,
     pub options: Vec<String>,
     pub install: Option<String>,
-    
+
     /// Raw PKGBUILD content
     pub raw_content: String,
 }
@@ -71,20 +71,22 @@ pub struct SecurityIssue {
 #[derive(Debug, Clone, Default)]
 pub struct SecurityReport {
     pub issues: Vec<SecurityIssue>,
-    pub score: u32,  // 0-100, higher is safer
+    pub score: u32, // 0-100, higher is safer
     pub passed: bool,
 }
 
 impl SecurityReport {
     /// Check if report has critical issues
     pub fn has_critical(&self) -> bool {
-        self.issues.iter()
+        self.issues
+            .iter()
             .any(|i| i.severity == SecuritySeverity::Critical)
     }
-    
+
     /// Check if report has high severity issues
     pub fn has_high(&self) -> bool {
-        self.issues.iter()
+        self.issues
+            .iter()
             .any(|i| i.severity == SecuritySeverity::High)
     }
 }
@@ -109,33 +111,84 @@ impl SecurityValidator {
         Self {
             critical_patterns: vec![
                 // rm -rf / followed by anything that's not a variable (simplified pattern)
-                (Regex::new(r"rm\s+-rf\s+/[a-zA-Z]").unwrap(), "Destructive rm -rf on root filesystem"),
-                (Regex::new(r":\s*\(\s*\)\s*\{").unwrap(), "Potential fork bomb pattern"),
-                (Regex::new(r"eval\s+.*\$\(curl").unwrap(), "Remote code execution via eval+curl"),
-                (Regex::new(r"eval\s+.*\$\(wget").unwrap(), "Remote code execution via eval+wget"),
-                (Regex::new(r"/dev/sd[a-z]").unwrap(), "Direct disk device access"),
-                (Regex::new(r"mkfs\s").unwrap(), "Filesystem formatting command"),
-                (Regex::new(r"dd\s+if=.*of=/dev/").unwrap(), "Direct disk write with dd"),
+                (
+                    Regex::new(r"rm\s+-rf\s+/[a-zA-Z]").unwrap(),
+                    "Destructive rm -rf on root filesystem",
+                ),
+                (
+                    Regex::new(r":\s*\(\s*\)\s*\{").unwrap(),
+                    "Potential fork bomb pattern",
+                ),
+                (
+                    Regex::new(r"eval\s+.*\$\(curl").unwrap(),
+                    "Remote code execution via eval+curl",
+                ),
+                (
+                    Regex::new(r"eval\s+.*\$\(wget").unwrap(),
+                    "Remote code execution via eval+wget",
+                ),
+                (
+                    Regex::new(r"/dev/sd[a-z]").unwrap(),
+                    "Direct disk device access",
+                ),
+                (
+                    Regex::new(r"mkfs\s").unwrap(),
+                    "Filesystem formatting command",
+                ),
+                (
+                    Regex::new(r"dd\s+if=.*of=/dev/").unwrap(),
+                    "Direct disk write with dd",
+                ),
             ],
             high_patterns: vec![
-                (Regex::new(r"curl\s+.*\|\s*(ba)?sh").unwrap(), "Piping curl to shell"),
-                (Regex::new(r"wget\s+.*\|\s*(ba)?sh").unwrap(), "Piping wget to shell"),
-                (Regex::new(r"/etc/shadow").unwrap(), "Access to shadow password file"),
+                (
+                    Regex::new(r"curl\s+.*\|\s*(ba)?sh").unwrap(),
+                    "Piping curl to shell",
+                ),
+                (
+                    Regex::new(r"wget\s+.*\|\s*(ba)?sh").unwrap(),
+                    "Piping wget to shell",
+                ),
+                (
+                    Regex::new(r"/etc/shadow").unwrap(),
+                    "Access to shadow password file",
+                ),
                 (Regex::new(r"/etc/passwd").unwrap(), "Access to passwd file"),
                 (Regex::new(r"~/.ssh").unwrap(), "Access to SSH directory"),
                 (Regex::new(r"\.gnupg").unwrap(), "Access to GPG directory"),
-                (Regex::new(r"chmod\s+777").unwrap(), "World-writable permissions"),
-                (Regex::new(r"setuid|setgid").unwrap(), "SUID/SGID modification"),
-                (Regex::new(r"nc\s+-[el]").unwrap(), "Netcat listener (potential backdoor)"),
-                (Regex::new(r"ncat\s.*-[el]").unwrap(), "Ncat listener (potential backdoor)"),
+                (
+                    Regex::new(r"chmod\s+777").unwrap(),
+                    "World-writable permissions",
+                ),
+                (
+                    Regex::new(r"setuid|setgid").unwrap(),
+                    "SUID/SGID modification",
+                ),
+                (
+                    Regex::new(r"nc\s+-[el]").unwrap(),
+                    "Netcat listener (potential backdoor)",
+                ),
+                (
+                    Regex::new(r"ncat\s.*-[el]").unwrap(),
+                    "Ncat listener (potential backdoor)",
+                ),
             ],
             medium_patterns: vec![
                 (Regex::new(r"curl\s").unwrap(), "Network access via curl"),
                 (Regex::new(r"wget\s").unwrap(), "Network access via wget"),
                 (Regex::new(r"git\s+clone").unwrap(), "Git clone in PKGBUILD"),
-                (Regex::new(r"pip\s+install").unwrap(), "pip install (bypasses pacman)"),
-                (Regex::new(r"npm\s+install").unwrap(), "npm install (bypasses pacman)"),
-                (Regex::new(r"cargo\s+install").unwrap(), "cargo install (bypasses pacman)"),
+                (
+                    Regex::new(r"pip\s+install").unwrap(),
+                    "pip install (bypasses pacman)",
+                ),
+                (
+                    Regex::new(r"npm\s+install").unwrap(),
+                    "npm install (bypasses pacman)",
+                ),
+                (
+                    Regex::new(r"cargo\s+install").unwrap(),
+                    "cargo install (bypasses pacman)",
+                ),
                 (Regex::new(r"go\s+get").unwrap(), "go get (bypasses pacman)"),
                 (Regex::new(r"sudo\s").unwrap(), "sudo usage in PKGBUILD"),
                 (Regex::new(r"doas\s").unwrap(), "doas usage in PKGBUILD"),
@@ -146,25 +199,27 @@ impl SecurityValidator {
                 (Regex::new(r"chown\s").unwrap(), "Ownership changes"),
             ],
             suspicious_commands: [
-                "rm", "curl", "wget", "nc", "ncat", "netcat", "base64",
-                "eval", "exec", "dd", "mkfs", "fdisk", "parted",
-            ].into_iter().collect(),
+                "rm", "curl", "wget", "nc", "ncat", "netcat", "base64", "eval", "exec", "dd",
+                "mkfs", "fdisk", "parted",
+            ]
+            .into_iter()
+            .collect(),
         }
     }
-    
+
     /// Validate a PKGBUILD file
     pub fn validate(&self, content: &str) -> SecurityReport {
         let mut issues = Vec::new();
-        
+
         // Check each line
         for (line_num, line) in content.lines().enumerate() {
             let line_num = line_num + 1;
-            
+
             // Skip comments
             if line.trim().starts_with('#') {
                 continue;
             }
-            
+
             // Check critical patterns
             for (pattern, desc) in &self.critical_patterns {
                 if pattern.is_match(line) {
@@ -176,7 +231,7 @@ impl SecurityValidator {
                     });
                 }
             }
-            
+
             // Check high severity patterns
             for (pattern, desc) in &self.high_patterns {
                 if pattern.is_match(line) {
@@ -188,7 +243,7 @@ impl SecurityValidator {
                     });
                 }
             }
-            
+
             // Check medium severity patterns
             for (pattern, desc) in &self.medium_patterns {
                 if pattern.is_match(line) {
@@ -200,7 +255,7 @@ impl SecurityValidator {
                     });
                 }
             }
-            
+
             // Check low severity patterns
             for (pattern, desc) in &self.low_patterns {
                 if pattern.is_match(line) {
@@ -213,7 +268,7 @@ impl SecurityValidator {
                 }
             }
         }
-        
+
         // Check for network access in build() function
         if self.has_network_in_build(content) {
             issues.push(SecurityIssue {
@@ -223,37 +278,40 @@ impl SecurityValidator {
                 pattern: "network in build()".to_string(),
             });
         }
-        
+
         // Calculate security score
         let score = self.calculate_score(&issues);
-        let passed = score >= 50 && !issues.iter().any(|i| i.severity == SecuritySeverity::Critical);
-        
+        let passed = score >= 50
+            && !issues
+                .iter()
+                .any(|i| i.severity == SecuritySeverity::Critical);
+
         SecurityReport {
             issues,
             score,
             passed,
         }
     }
-    
+
     /// Check if there's network access in the build() function
     fn has_network_in_build(&self, content: &str) -> bool {
         // Simple heuristic: look for network commands between build() and the next function
         let network_patterns = ["curl", "wget", "git clone", "pip install", "npm install"];
-        
+
         let mut in_build = false;
         for line in content.lines() {
             let trimmed = line.trim();
-            
+
             if trimmed.starts_with("build()") || trimmed.starts_with("build ()") {
                 in_build = true;
-            } else if in_build && (
-                trimmed.starts_with("package()") ||
-                trimmed.starts_with("package_") ||
-                trimmed.starts_with("check()")
-            ) {
+            } else if in_build
+                && (trimmed.starts_with("package()")
+                    || trimmed.starts_with("package_")
+                    || trimmed.starts_with("check()"))
+            {
                 in_build = false;
             }
-            
+
             if in_build && !trimmed.starts_with('#') {
                 for pattern in &network_patterns {
                     if trimmed.contains(pattern) {
@@ -262,14 +320,14 @@ impl SecurityValidator {
                 }
             }
         }
-        
+
         false
     }
-    
+
     /// Calculate security score based on issues
     fn calculate_score(&self, issues: &[SecurityIssue]) -> u32 {
         let mut score: i32 = 100;
-        
+
         for issue in issues {
             match issue.severity {
                 SecuritySeverity::Critical => score -= 100,
@@ -279,7 +337,7 @@ impl SecurityValidator {
                 SecuritySeverity::Info => score -= 1,
             }
         }
-        
+
         score.max(0) as u32
     }
 }
@@ -302,37 +360,58 @@ pub fn parse_pkgbuild_content(content: &str) -> Result<Pkgbuild> {
         raw_content: content.to_string(),
         ..Default::default()
     };
-    
+
     // Simple regex-based parsing for common fields
     // Note: This is a simplified parser - a full parser would need to handle
     // bash syntax properly including variable expansion, arrays, etc.
-    
+
     // Single value fields
     if let Some(cap) = Regex::new(r"pkgbase=([^\n]+)")?.captures(content) {
-        pkgbuild.pkgbase = cap.get(1).unwrap().as_str().trim().trim_matches('"').trim_matches('\'').to_string();
+        pkgbuild.pkgbase = cap
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
     }
-    
+
     if let Some(cap) = Regex::new(r"pkgver=([^\n]+)")?.captures(content) {
-        pkgbuild.pkgver = cap.get(1).unwrap().as_str().trim().trim_matches('"').trim_matches('\'').to_string();
+        pkgbuild.pkgver = cap
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
     }
-    
+
     if let Some(cap) = Regex::new(r"pkgrel=([^\n]+)")?.captures(content) {
-        pkgbuild.pkgrel = cap.get(1).unwrap().as_str().trim().trim_matches('"').trim_matches('\'').to_string();
+        pkgbuild.pkgrel = cap
+            .get(1)
+            .unwrap()
+            .as_str()
+            .trim()
+            .trim_matches('"')
+            .trim_matches('\'')
+            .to_string();
     }
-    
+
     if let Some(cap) = Regex::new(r"epoch=([^\n]+)")?.captures(content) {
         let epoch_str = cap.get(1).unwrap().as_str().trim();
         pkgbuild.epoch = epoch_str.parse().ok();
     }
-    
+
     if let Some(cap) = Regex::new(r#"pkgdesc=["']([^"']+)["']"#)?.captures(content) {
         pkgbuild.pkgdesc = cap.get(1).unwrap().as_str().to_string();
     }
-    
+
     if let Some(cap) = Regex::new(r#"url=["']([^"']+)["']"#)?.captures(content) {
         pkgbuild.url = cap.get(1).unwrap().as_str().to_string();
     }
-    
+
     // Array fields
     pkgbuild.pkgname = parse_array(content, "pkgname");
     pkgbuild.arch = parse_array(content, "arch");
@@ -351,12 +430,12 @@ pub fn parse_pkgbuild_content(content: &str) -> Result<Pkgbuild> {
     pkgbuild.validpgpkeys = parse_array(content, "validpgpkeys");
     pkgbuild.backup = parse_array(content, "backup");
     pkgbuild.options = parse_array(content, "options");
-    
+
     // If pkgbase is empty, use first pkgname
     if pkgbuild.pkgbase.is_empty() && !pkgbuild.pkgname.is_empty() {
         pkgbuild.pkgbase = pkgbuild.pkgname[0].clone();
     }
-    
+
     Ok(pkgbuild)
 }
 
@@ -374,35 +453,41 @@ fn parse_array(content: &str, field: &str) -> Vec<String> {
                 .collect();
         }
     }
-    
+
     // Try single value: field=value
     let pattern = format!(r"{}=([^\n\(]+)", field);
     if let Ok(re) = Regex::new(&pattern) {
         if let Some(cap) = re.captures(content) {
-            let value = cap.get(1).unwrap().as_str().trim().trim_matches('"').trim_matches('\'');
+            let value = cap
+                .get(1)
+                .unwrap()
+                .as_str()
+                .trim()
+                .trim_matches('"')
+                .trim_matches('\'');
             if !value.is_empty() {
                 return vec![value.to_string()];
             }
         }
     }
-    
+
     Vec::new()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_security_validator_critical() {
         let validator = SecurityValidator::new();
-        let content = "rm -rf /etc/passwd";  // Malicious
+        let content = "rm -rf /etc/passwd"; // Malicious
         let report = validator.validate(content);
-        
+
         assert!(!report.passed);
         assert!(report.has_critical() || report.has_high());
     }
-    
+
     #[test]
     fn test_security_validator_safe() {
         let validator = SecurityValidator::new();
@@ -421,11 +506,11 @@ package() {
 }
 "#;
         let report = validator.validate(content);
-        
+
         assert!(report.passed);
         assert_eq!(report.score, 100);
     }
-    
+
     #[test]
     fn test_security_validator_network_in_build() {
         let validator = SecurityValidator::new();
@@ -436,13 +521,14 @@ build() {
 }
 "#;
         let report = validator.validate(content);
-        
+
         // Should detect network access in build
-        assert!(report.issues.iter().any(|i| 
-            i.description.contains("Network access")
-        ));
+        assert!(report
+            .issues
+            .iter()
+            .any(|i| i.description.contains("Network access")));
     }
-    
+
     #[test]
     fn test_parse_pkgbuild() {
         let content = r#"
@@ -458,9 +544,9 @@ makedepends=('cmake')
 source=("https://example.com/test-1.2.3.tar.gz")
 sha256sums=('1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef')
 "#;
-        
+
         let pkgbuild = parse_pkgbuild_content(content).unwrap();
-        
+
         assert_eq!(pkgbuild.pkgname, vec!["test-package"]);
         assert_eq!(pkgbuild.pkgver, "1.2.3");
         assert_eq!(pkgbuild.pkgrel, "1");
@@ -469,13 +555,13 @@ sha256sums=('1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef')
         assert_eq!(pkgbuild.depends, vec!["glibc", "gcc-libs"]);
         assert_eq!(pkgbuild.makedepends, vec!["cmake"]);
     }
-    
+
     #[test]
     fn test_parse_array() {
         let content = "depends=('foo' 'bar' 'baz')";
         let result = parse_array(content, "depends");
         assert_eq!(result, vec!["foo", "bar", "baz"]);
-        
+
         let content = "pkgname=single";
         let result = parse_array(content, "pkgname");
         assert_eq!(result, vec!["single"]);

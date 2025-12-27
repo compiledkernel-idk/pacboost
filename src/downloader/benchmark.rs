@@ -5,12 +5,10 @@
 
 //! Benchmark utilities for testing mirror speeds.
 
-use super::mirror::MirrorPool;
 use anyhow::Result;
 use console::style;
 use indicatif::{ProgressBar, ProgressStyle};
 use reqwest::Client;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// Result of a mirror benchmark
@@ -46,10 +44,18 @@ impl BenchmarkResult {
 }
 
 /// Run benchmark on a set of mirrors with multiple iterations for scientific accuracy
-pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Vec<BenchmarkResult>> {
+pub async fn run_benchmark(
+    mirrors: Vec<String>,
+    test_size_kb: u64,
+) -> Result<Vec<BenchmarkResult>> {
     const ITERATIONS: usize = 3;
     println!("{}", style(":: Running benchmark...").bold().cyan());
-    println!("   {} mirrors | {} KB test size | {} iterations\n", mirrors.len(), test_size_kb, ITERATIONS);
+    println!(
+        "   {} mirrors | {} KB test size | {} iterations\n",
+        mirrors.len(),
+        test_size_kb,
+        ITERATIONS
+    );
 
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
@@ -68,7 +74,7 @@ pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Ve
 
     for url in mirrors {
         pb.set_message(format!("Testing: {}", truncate_url(&url, 40)));
-        
+
         let mut iteration_results = Vec::new();
         for _ in 0..ITERATIONS {
             let result = benchmark_mirror(&client, &url, test_size_kb).await;
@@ -78,14 +84,18 @@ pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Ve
         }
 
         if iteration_results.is_empty() {
-             results.push(BenchmarkResult::failure(url.to_string(), "All iterations failed".to_string()));
+            results.push(BenchmarkResult::failure(
+                url.to_string(),
+                "All iterations failed".to_string(),
+            ));
         } else {
             // Calculate median for robustness
-            iteration_results.sort_by(|a, b| a.throughput_mbps.partial_cmp(&b.throughput_mbps).unwrap());
+            iteration_results
+                .sort_by(|a, b| a.throughput_mbps.partial_cmp(&b.throughput_mbps).unwrap());
             let median = iteration_results[iteration_results.len() / 2].clone();
             results.push(median);
         }
-        
+
         pb.inc(1);
     }
 
@@ -104,7 +114,7 @@ pub async fn run_benchmark(mirrors: Vec<String>, test_size_kb: u64) -> Result<Ve
     Ok(results)
 }
 
-async fn benchmark_mirror(client: &Client, base_url: &str, test_size_kb: u64) -> BenchmarkResult {
+async fn benchmark_mirror(client: &Client, base_url: &str, _test_size_kb: u64) -> BenchmarkResult {
     // Try to download the database file to test speed
     let test_urls = vec![
         format!("{}/core.db", base_url),
@@ -113,7 +123,7 @@ async fn benchmark_mirror(client: &Client, base_url: &str, test_size_kb: u64) ->
 
     for test_url in test_urls {
         let start = Instant::now();
-        
+
         match client.get(&test_url).send().await {
             Ok(response) => {
                 if !response.status().is_success() {
@@ -128,10 +138,15 @@ async fn benchmark_mirror(client: &Client, base_url: &str, test_size_kb: u64) ->
                         let elapsed = start.elapsed();
                         let bytes_downloaded = bytes.len() as f64;
                         let seconds = elapsed.as_secs_f64();
-                        
+
                         if seconds > 0.0 {
-                            let throughput_mbps = (bytes_downloaded / 1024.0 / 1024.0) / seconds * 8.0;
-                            return BenchmarkResult::success(base_url.to_string(), latency, throughput_mbps);
+                            let throughput_mbps =
+                                (bytes_downloaded / 1024.0 / 1024.0) / seconds * 8.0;
+                            return BenchmarkResult::success(
+                                base_url.to_string(),
+                                latency,
+                                throughput_mbps,
+                            );
                         }
                     }
                     Err(e) => {
@@ -162,11 +177,11 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
 
     for (i, result) in results.iter().enumerate() {
         let rank = i + 1;
-        
+
         if result.success {
             let latency = format!("{}ms", result.latency_ms);
             let speed = format!("{:.2} Mbps", result.throughput_mbps);
-            
+
             let speed_style = if result.throughput_mbps > 100.0 {
                 style(speed).green().bold()
             } else if result.throughput_mbps > 50.0 {
@@ -191,7 +206,11 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
                 style("---").dim(),
                 style("FAILED").red(),
                 truncate_url(&result.url, 35),
-                style(format!("({})", result.error.as_deref().unwrap_or("unknown"))).dim()
+                style(format!(
+                    "({})",
+                    result.error.as_deref().unwrap_or("unknown")
+                ))
+                .dim()
             );
         }
     }
@@ -201,18 +220,23 @@ fn print_benchmark_results(results: &[BenchmarkResult]) {
     // Summary
     let successful: Vec<_> = results.iter().filter(|r| r.success).collect();
     if !successful.is_empty() {
-        let avg_speed: f64 = successful.iter().map(|r| r.throughput_mbps).sum::<f64>() / successful.len() as f64;
-        let max_speed = successful.iter().map(|r| r.throughput_mbps).fold(0.0f64, f64::max);
-        
+        let avg_speed: f64 =
+            successful.iter().map(|r| r.throughput_mbps).sum::<f64>() / successful.len() as f64;
+        let max_speed = successful
+            .iter()
+            .map(|r| r.throughput_mbps)
+            .fold(0.0f64, f64::max);
+
         println!("\n{}", style("Summary").bold());
         println!("  Mirrors tested: {}", results.len());
-        println!("  Successful:     {} ({}%)", 
-            successful.len(), 
+        println!(
+            "  Successful:     {} ({}%)",
+            successful.len(),
             (successful.len() * 100) / results.len()
         );
         println!("  Average speed:  {:.2} Mbps", avg_speed);
         println!("  Best speed:     {:.2} Mbps", max_speed);
-        
+
         if let Some(best) = successful.first() {
             println!("  Fastest mirror: {}", style(&best.url).green());
         }

@@ -18,13 +18,13 @@
 
 //! Smart package cache with LRU eviction.
 
-use anyhow::{Result, Context};
+use anyhow::Result;
 use console::style;
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::fs;
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
+use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 
 const CACHE_INDEX_FILE: &str = "cache_index.json";
 
@@ -64,35 +64,33 @@ impl PackageCache {
     /// Create a new cache manager
     pub fn new(cache_dir: PathBuf, max_size_mb: u64) -> Result<Self> {
         fs::create_dir_all(&cache_dir)?;
-        
+
         let mut cache = Self {
             cache_dir: cache_dir.clone(),
             max_size_bytes: max_size_mb * 1024 * 1024,
             entries: HashMap::new(),
             stats: CacheStats::default(),
         };
-        
+
         cache.load_index()?;
         cache.update_stats();
-        
+
         Ok(cache)
     }
 
     /// Load cache index from disk
     fn load_index(&mut self) -> Result<()> {
         let index_path = self.cache_dir.join(CACHE_INDEX_FILE);
-        
+
         if index_path.exists() {
             let content = fs::read_to_string(&index_path)?;
-            self.entries = serde_json::from_str(&content)
-                .unwrap_or_default();
+            self.entries = serde_json::from_str(&content).unwrap_or_default();
         }
-        
+
         // Verify entries still exist
-        self.entries.retain(|_, entry| {
-            self.cache_dir.join(&entry.filename).exists()
-        });
-        
+        self.entries
+            .retain(|_, entry| self.cache_dir.join(&entry.filename).exists());
+
         Ok(())
     }
 
@@ -107,10 +105,8 @@ impl PackageCache {
     /// Update statistics
     fn update_stats(&mut self) {
         self.stats.total_entries = self.entries.len();
-        self.stats.total_size_bytes = self.entries.values()
-            .map(|e| e.size_bytes)
-            .sum();
-        
+        self.stats.total_size_bytes = self.entries.values().map(|e| e.size_bytes).sum();
+
         if let Some(oldest) = self.entries.values().map(|e| e.added_time).min() {
             self.stats.oldest_entry = Some(oldest);
         }
@@ -125,14 +121,14 @@ impl PackageCache {
             entry.last_accessed = chrono::Utc::now().timestamp();
             entry.access_count += 1;
             self.stats.cache_hits += 1;
-            
+
             let path = self.cache_dir.join(&entry.filename);
             if path.exists() {
                 let _ = self.save_index();
                 return Some(path);
             }
         }
-        
+
         self.stats.cache_misses += 1;
         None
     }
@@ -144,7 +140,7 @@ impl PackageCache {
                 entry.last_accessed = chrono::Utc::now().timestamp();
                 entry.access_count += 1;
                 self.stats.cache_hits += 1;
-                
+
                 let path = self.cache_dir.join(&entry.filename);
                 if path.exists() {
                     let _ = self.save_index();
@@ -152,63 +148,74 @@ impl PackageCache {
                 }
             }
         }
-        
+
         self.stats.cache_misses += 1;
         None
     }
 
     /// Add a file to the cache
-    pub fn add(&mut self, source_path: &Path, package_name: &str, version: &str) -> Result<PathBuf> {
+    pub fn add(
+        &mut self,
+        source_path: &Path,
+        package_name: &str,
+        version: &str,
+    ) -> Result<PathBuf> {
         let content = fs::read(source_path)?;
         let sha256 = hex::encode(Sha256::digest(&content));
-        
+
         // Check if already cached
         if let Some(entry) = self.entries.get(&sha256) {
             return Ok(self.cache_dir.join(&entry.filename));
         }
-        
-        let filename = source_path.file_name()
+
+        let filename = source_path
+            .file_name()
             .and_then(|n| n.to_str())
             .ok_or_else(|| anyhow::anyhow!("Invalid filename"))?;
-        
+
         let size = content.len() as u64;
-        
+
         // Evict if necessary
         while self.stats.total_size_bytes + size > self.max_size_bytes {
             if !self.evict_lru() {
                 break;
             }
         }
-        
+
         // Copy file to cache
         let cache_path = self.cache_dir.join(filename);
         fs::write(&cache_path, &content)?;
-        
+
         // Add entry
         let now = chrono::Utc::now().timestamp();
-        self.entries.insert(sha256.clone(), CacheEntry {
-            filename: filename.to_string(),
-            size_bytes: size,
-            sha256,
-            added_time: now,
-            last_accessed: now,
-            access_count: 1,
-            package_name: package_name.to_string(),
-            version: version.to_string(),
-        });
-        
+        self.entries.insert(
+            sha256.clone(),
+            CacheEntry {
+                filename: filename.to_string(),
+                size_bytes: size,
+                sha256,
+                added_time: now,
+                last_accessed: now,
+                access_count: 1,
+                package_name: package_name.to_string(),
+                version: version.to_string(),
+            },
+        );
+
         self.update_stats();
         self.save_index()?;
-        
+
         Ok(cache_path)
     }
 
     /// Evict least recently used entry
     fn evict_lru(&mut self) -> bool {
-        let lru_key = self.entries.iter()
+        let lru_key = self
+            .entries
+            .iter()
             .min_by_key(|(_, e)| e.last_accessed)
             .map(|(k, _)| k.clone());
-        
+
         if let Some(key) = lru_key {
             if let Some(entry) = self.entries.remove(&key) {
                 let path = self.cache_dir.join(&entry.filename);
@@ -217,7 +224,7 @@ impl PackageCache {
                 return true;
             }
         }
-        
+
         false
     }
 
@@ -226,12 +233,14 @@ impl PackageCache {
         let cutoff = chrono::Utc::now().timestamp() - (max_age_days as i64 * 86400);
         let mut removed_count = 0;
         let mut removed_bytes = 0u64;
-        
-        let to_remove: Vec<String> = self.entries.iter()
+
+        let to_remove: Vec<String> = self
+            .entries
+            .iter()
             .filter(|(_, e)| e.last_accessed < cutoff)
             .map(|(k, _)| k.clone())
             .collect();
-        
+
         for key in to_remove {
             if let Some(entry) = self.entries.remove(&key) {
                 let path = self.cache_dir.join(&entry.filename);
@@ -241,10 +250,10 @@ impl PackageCache {
                 }
             }
         }
-        
+
         self.update_stats();
         self.save_index()?;
-        
+
         Ok(CleanResult {
             removed_count,
             removed_bytes,
@@ -255,16 +264,16 @@ impl PackageCache {
     pub fn clear(&mut self) -> Result<CleanResult> {
         let removed_count = self.entries.len();
         let removed_bytes = self.stats.total_size_bytes;
-        
+
         for entry in self.entries.values() {
             let path = self.cache_dir.join(&entry.filename);
             let _ = fs::remove_file(&path);
         }
-        
+
         self.entries.clear();
         self.update_stats();
         self.save_index()?;
-        
+
         Ok(CleanResult {
             removed_count,
             removed_bytes,
@@ -301,16 +310,18 @@ pub struct CleanResult {
 /// Display cache statistics
 pub fn display_cache_stats(stats: &CacheStats, hit_rate: f64) {
     println!();
-    println!("{} {}", 
+    println!(
+        "{} {}",
         style("::").cyan().bold(),
-        style("Package Cache Statistics").white().bold());
-    
+        style("Package Cache Statistics").white().bold()
+    );
+
     println!("   Entries: {}", stats.total_entries);
     println!("   Total Size: {}", format_size(stats.total_size_bytes));
     println!("   Cache Hits: {}", stats.cache_hits);
     println!("   Cache Misses: {}", stats.cache_misses);
     println!("   Hit Rate: {:.1}%", hit_rate);
-    
+
     if let Some(oldest) = stats.oldest_entry {
         println!("   Oldest Entry: {}", format_timestamp(oldest));
     }
@@ -359,16 +370,16 @@ mod tests {
     fn test_add_and_get() {
         let dir = tempdir().unwrap();
         let mut cache = PackageCache::new(dir.path().to_path_buf(), 100).unwrap();
-        
+
         // Create test file
         let test_file = dir.path().join("test.pkg.tar");
         let mut file = fs::File::create(&test_file).unwrap();
         file.write_all(b"test package content").unwrap();
-        
+
         // Add to cache
         cache.add(&test_file, "test", "1.0.0").unwrap();
         assert_eq!(cache.stats.total_entries, 1);
-        
+
         // Get from cache
         let result = cache.get_package("test", "1.0.0");
         assert!(result.is_some());
@@ -379,11 +390,11 @@ mod tests {
     fn test_clear() {
         let dir = tempdir().unwrap();
         let mut cache = PackageCache::new(dir.path().to_path_buf(), 100).unwrap();
-        
+
         let test_file = dir.path().join("test.pkg.tar");
         fs::write(&test_file, b"test").unwrap();
         cache.add(&test_file, "test", "1.0.0").unwrap();
-        
+
         let result = cache.clear().unwrap();
         assert_eq!(result.removed_count, 1);
         assert_eq!(cache.stats.total_entries, 0);

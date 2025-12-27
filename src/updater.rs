@@ -16,13 +16,12 @@
  * along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
-
-use serde::Deserialize;
+use anyhow::Result;
 use console::style;
+use flate2::read::GzDecoder;
+use serde::Deserialize;
 use std::fs;
 use std::io::{self, Write};
-use anyhow::Result;
-use flate2::read::GzDecoder;
 use tar::Archive;
 
 #[derive(Deserialize)]
@@ -44,7 +43,7 @@ pub struct UpdateInfo {
 
 pub fn check_for_updates(current_version: &str) -> Option<UpdateInfo> {
     let url = "https://api.github.com/repos/compiledkernel-idk/pacboost/releases/latest";
-    
+
     let response = ureq::get(url)
         .set("User-Agent", "pacboost-updater")
         .timeout(std::time::Duration::from_secs(2))
@@ -58,21 +57,31 @@ pub fn check_for_updates(current_version: &str) -> Option<UpdateInfo> {
                 let parse_ver = |v: &str| -> Option<(u32, u32, u32)> {
                     let parts: Vec<&str> = v.split('.').collect();
                     if parts.len() >= 3 {
-                       Some((
-                           parts[0].parse().unwrap_or(0),
-                           parts[1].parse().unwrap_or(0),
-                           parts[2].parse().unwrap_or(0)
-                       ))
-                    } else { None }
+                        Some((
+                            parts[0].parse().unwrap_or(0),
+                            parts[1].parse().unwrap_or(0),
+                            parts[2].parse().unwrap_or(0),
+                        ))
+                    } else {
+                        None
+                    }
                 };
-                
+
                 // Only update if remote is newer
-                if let (Some((r_maj, r_min, r_pat)), Some((c_maj, c_min, c_pat))) = (parse_ver(latest), parse_ver(current_version)) {
-                    if r_maj < c_maj { return None; }
-                    if r_maj == c_maj && r_min < c_min { return None; }
-                    if r_maj == c_maj && r_min == c_min && r_pat <= c_pat { return None; }
+                if let (Some((r_maj, r_min, r_pat)), Some((c_maj, c_min, c_pat))) =
+                    (parse_ver(latest), parse_ver(current_version))
+                {
+                    if r_maj < c_maj {
+                        return None;
+                    }
+                    if r_maj == c_maj && r_min < c_min {
+                        return None;
+                    }
+                    if r_maj == c_maj && r_min == c_min && r_pat <= c_pat {
+                        return None;
+                    }
                 }
-                
+
                 let mut info = UpdateInfo {
                     version: latest.to_string(),
                     pacboost_url: None,
@@ -106,30 +115,32 @@ fn update_binary_from_tarball(name: &str, url: &str, target: &std::path::Path) -
     print!("   fetching {}... ", name);
     io::stdout().flush()?;
 
-    let response = ureq::get(url).call().map_err(|e| anyhow::anyhow!("failed to download {}: {}", name, e))?;
-    
+    let response = ureq::get(url)
+        .call()
+        .map_err(|e| anyhow::anyhow!("failed to download {}: {}", name, e))?;
+
     // Read the response body into a buffer
     let mut reader = response.into_reader();
     let mut buffer = Vec::new();
     reader.read_to_end(&mut buffer)?;
-    
+
     let tar = GzDecoder::new(std::io::Cursor::new(buffer));
     let mut archive = Archive::new(tar);
-    
+
     // Find the binary in the archive
     let mut found = false;
     let temp_target = target.with_extension("tmp");
-    
+
     for file in archive.entries()? {
         let mut file = file?;
         let path = file.path()?;
         if path.file_name().and_then(|n| n.to_str()) == Some(name) {
-             file.unpack(&temp_target)?;
-             found = true;
-             break;
+            file.unpack(&temp_target)?;
+            found = true;
+            break;
         }
     }
-    
+
     if !found {
         return Err(anyhow::anyhow!("binary not found in update archive"));
     }

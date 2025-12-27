@@ -109,7 +109,7 @@ impl TrustScorer {
         );
 
         let response = self.client.get(&url).send().await?;
-        
+
         if !response.status().is_success() {
             return Ok(MaintainerInfo {
                 username: username.to_string(),
@@ -118,7 +118,7 @@ impl TrustScorer {
         }
 
         let data: AurSearchResponse = response.json().await?;
-        
+
         let packages_count = data.resultcount as u32;
         let total_votes: u32 = data.results.iter().map(|p| p.num_votes as u32).sum();
         let average_popularity: f64 = if packages_count > 0 {
@@ -126,8 +126,10 @@ impl TrustScorer {
         } else {
             0.0
         };
-        
-        let flagged_packages = data.results.iter()
+
+        let flagged_packages = data
+            .results
+            .iter()
             .filter(|p| p.out_of_date.is_some())
             .count() as u32;
 
@@ -136,14 +138,18 @@ impl TrustScorer {
             packages_count,
             total_votes,
             average_popularity,
-            first_submit: data.results.iter()
+            first_submit: data
+                .results
+                .iter()
                 .filter_map(|p| p.first_submitted)
                 .min()
-                .map(|t| format_timestamp(t)),
-            last_active: data.results.iter()
+                .map(format_timestamp),
+            last_active: data
+                .results
+                .iter()
                 .filter_map(|p| p.last_modified)
                 .max()
-                .map(|t| format_timestamp(t)),
+                .map(format_timestamp),
             orphaned_packages: 0,
             flagged_packages,
             trusted_user: false, // Would need to check against TU list
@@ -160,7 +166,7 @@ impl TrustScorer {
         }
 
         // Package count bonus (max +15)
-        score += (info.packages_count.min(15) as i32) * 1;
+        score += (info.packages_count.min(15) as i32);
 
         // Vote bonus (max +15)
         let vote_bonus = (info.total_votes as f64 / 10.0).min(15.0) as i32;
@@ -251,24 +257,28 @@ pub fn display_trust_info(info: &MaintainerInfo, score: u32) {
     };
 
     println!();
-    println!("{} Maintainer: {}", 
+    println!(
+        "{} Maintainer: {}",
         style("::").cyan().bold(),
-        style(&info.username).white().bold());
+        style(&info.username).white().bold()
+    );
     println!("   Trust Level: {} (score: {})", level_style, score);
     println!("   Packages: {}", info.packages_count);
     println!("   Total Votes: {}", info.total_votes);
     println!("   Average Popularity: {:.2}", info.average_popularity);
-    
+
     if let Some(ref first) = info.first_submit {
         println!("   First Submit: {}", first);
     }
     if let Some(ref last) = info.last_active {
         println!("   Last Active: {}", last);
     }
-    
+
     if info.flagged_packages > 0 {
-        println!("   {} packages flagged out-of-date", 
-            style(info.flagged_packages).yellow());
+        println!(
+            "   {} packages flagged out-of-date",
+            style(info.flagged_packages).yellow()
+        );
     }
 }
 
@@ -287,7 +297,7 @@ mod tests {
     #[test]
     fn test_calculate_score() {
         let scorer = TrustScorer::new();
-        
+
         // Unknown maintainer
         let info = MaintainerInfo::default();
         let score = scorer.calculate_score(&info);

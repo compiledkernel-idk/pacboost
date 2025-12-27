@@ -11,20 +11,20 @@
 //! High-performance download engine with segmented parallel downloads,
 //! multi-mirror racing, adaptive parallelism, and turbo mode for 2x+ speeds.
 
+mod benchmark;
+pub mod cache;
 mod engine;
 mod mirror;
-mod segment;
 mod scheduler;
-mod benchmark;
+mod segment;
 mod turbo;
-pub mod cache;
 
 // Legacy exports for backwards compatibility
-pub use engine::{DownloadEngine, DownloadTask, DownloadResult};
 pub use benchmark::run_benchmark;
+pub use engine::DownloadTask;
 
 // NEW: Turbo engine exports (2x+ faster)
-pub use turbo::{TurboEngine, TurboTask, TurboStats, TurboConfig};
+pub use turbo::{TurboConfig, TurboEngine, TurboTask};
 
 use std::time::Duration;
 
@@ -51,11 +51,11 @@ impl Default for DownloadConfig {
         let cores = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4);
-        
+
         Self {
             // Aggressive parallelism based on CPU cores
             max_connections: (cores * 8).max(32),
-            segments: 16,  // More segments for better parallelism
+            segments: 16, // More segments for better parallelism
             connect_timeout: Duration::from_secs(3),
             request_timeout: Duration::from_secs(120),
             http2: true,

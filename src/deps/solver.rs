@@ -18,7 +18,7 @@
 
 //! Stub for dependency solver (placeholder for SAT-based solving).
 
-use super::{DependencyGraph, Conflict};
+use super::{Conflict, DependencyGraph};
 
 /// Solver result
 pub struct SolverResult {
@@ -40,7 +40,7 @@ impl Solver {
     /// Solve the dependency graph
     pub fn solve(&self) -> SolverResult {
         let conflicts = self.graph.find_conflicts();
-        
+
         if !conflicts.is_empty() {
             return SolverResult {
                 install_order: Vec::new(),

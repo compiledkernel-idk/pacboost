@@ -23,11 +23,11 @@
 //! - Conflict detection
 //! - Version constraint solving
 
-pub mod solver;
 pub mod lockfile;
+pub mod solver;
 
-use std::collections::{HashMap, HashSet};
 use console::style;
+use std::collections::{HashMap, HashSet};
 
 /// Dependency type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,10 +104,10 @@ impl DependencyGraph {
         for dep in &node.dependencies {
             self.reverse_deps
                 .entry(dep.name.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(node.name.clone());
         }
-        
+
         self.nodes.insert(node.name.clone(), node);
     }
 
@@ -132,7 +132,12 @@ impl DependencyGraph {
         affected
     }
 
-    fn find_dependents_recursive(&self, name: &str, affected: &mut Vec<String>, visited: &mut HashSet<String>) {
+    fn find_dependents_recursive(
+        &self,
+        name: &str,
+        affected: &mut Vec<String>,
+        visited: &mut HashSet<String>,
+    ) {
         if visited.contains(name) {
             return;
         }
@@ -246,7 +251,11 @@ pub struct CycleError {
 
 impl std::fmt::Display for CycleError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Dependency cycle detected: {}", self.packages.join(" -> "))
+        write!(
+            f,
+            "Dependency cycle detected: {}",
+            self.packages.join(" -> ")
+        )
     }
 }
 
@@ -255,12 +264,15 @@ impl std::error::Error for CycleError {}
 /// Display dependency tree
 pub fn display_tree(graph: &DependencyGraph, root: &str, indent: usize) {
     let prefix = "  ".repeat(indent);
-    
+
     if let Some(node) = graph.get(root) {
-        println!("{}{} {}", prefix, 
+        println!(
+            "{}{} {}",
+            prefix,
             style(&node.name).cyan(),
-            style(&node.version).green());
-        
+            style(&node.version).green()
+        );
+
         for dep in &node.dependencies {
             if dep.dep_type == DepType::Required {
                 display_tree(graph, &dep.name, indent + 1);
@@ -272,7 +284,7 @@ pub fn display_tree(graph: &DependencyGraph, root: &str, indent: usize) {
 /// Why is a package installed?
 pub fn explain_dependency(graph: &DependencyGraph, package: &str) {
     let dependents = graph.get_dependents(package);
-    
+
     if dependents.is_empty() {
         println!("{} is explicitly installed", style(package).cyan());
     } else {
@@ -290,7 +302,7 @@ mod tests {
     #[test]
     fn test_graph_basic() {
         let mut graph = DependencyGraph::new();
-        
+
         graph.add_package(PackageNode {
             name: "a".to_string(),
             version: "1.0".to_string(),
@@ -299,7 +311,7 @@ mod tests {
             conflicts: Vec::new(),
             replaces: Vec::new(),
         });
-        
+
         graph.add_package(PackageNode {
             name: "b".to_string(),
             version: "1.0".to_string(),
@@ -308,7 +320,7 @@ mod tests {
             conflicts: Vec::new(),
             replaces: Vec::new(),
         });
-        
+
         assert_eq!(graph.len(), 2);
         assert_eq!(graph.get_dependents("b"), vec!["a"]);
     }
@@ -316,7 +328,7 @@ mod tests {
     #[test]
     fn test_topological_order() {
         let mut graph = DependencyGraph::new();
-        
+
         graph.add_package(PackageNode {
             name: "a".to_string(),
             version: "1.0".to_string(),
@@ -325,7 +337,7 @@ mod tests {
             conflicts: Vec::new(),
             replaces: Vec::new(),
         });
-        
+
         graph.add_package(PackageNode {
             name: "b".to_string(),
             version: "1.0".to_string(),
@@ -334,7 +346,7 @@ mod tests {
             conflicts: Vec::new(),
             replaces: Vec::new(),
         });
-        
+
         let order = graph.topological_order().unwrap();
         // Just verify we get both packages and no errors
         assert_eq!(order.len(), 2);
@@ -345,7 +357,7 @@ mod tests {
     #[test]
     fn test_conflict_detection() {
         let mut graph = DependencyGraph::new();
-        
+
         graph.add_package(PackageNode {
             name: "a".to_string(),
             version: "1.0".to_string(),
@@ -354,7 +366,7 @@ mod tests {
             conflicts: vec!["b".to_string()],
             replaces: Vec::new(),
         });
-        
+
         graph.add_package(PackageNode {
             name: "b".to_string(),
             version: "1.0".to_string(),
@@ -363,7 +375,7 @@ mod tests {
             conflicts: Vec::new(),
             replaces: Vec::new(),
         });
-        
+
         let conflicts = graph.find_conflicts();
         assert_eq!(conflicts.len(), 1);
     }

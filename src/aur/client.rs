@@ -18,7 +18,7 @@
 
 //! AUR RPC API client with caching and rate limiting.
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use lru::LruCache;
 use serde::Deserialize;
 use std::num::NonZeroUsize;
@@ -51,7 +51,7 @@ pub struct AurPackageInfo {
     pub last_modified: u64,
     #[serde(rename = "URLPath")]
     pub url_path: String,
-    
+
     // Dependencies
     #[serde(default)]
     pub depends: Vec<String>,
@@ -82,7 +82,7 @@ impl AurPackageInfo {
         deps.extend(self.make_depends.clone());
         deps
     }
-    
+
     /// Get the snapshot download URL
     pub fn snapshot_url(&self) -> String {
         format!(
@@ -112,7 +112,7 @@ impl AurClient {
     pub fn new() -> Self {
         Self::with_config("https://aur.archlinux.org/rpc/".to_string(), 500)
     }
-    
+
     /// Create a new AUR client with custom settings
     pub fn with_config(base_url: String, cache_size: usize) -> Self {
         let client = reqwest::Client::builder()
@@ -122,18 +122,18 @@ impl AurClient {
             .user_agent("pacboost/1.3.0")
             .build()
             .expect("Failed to create HTTP client");
-        
+
         Self {
             client,
             cache: Arc::new(RwLock::new(LruCache::new(
-                NonZeroUsize::new(cache_size).unwrap()
+                NonZeroUsize::new(cache_size).unwrap(),
             ))),
             base_url,
             last_request: Arc::new(RwLock::new(Instant::now())),
             min_request_interval: Duration::from_millis(100), // Rate limiting
         }
     }
-    
+
     /// Rate limit requests to avoid hammering AUR
     async fn rate_limit(&self) {
         let mut last = self.last_request.write().await;
@@ -143,7 +143,7 @@ impl AurClient {
         }
         *last = Instant::now();
     }
-    
+
     /// Get package info, using cache if available
     pub async fn get_info(&self, name: &str) -> Result<AurPackageInfo> {
         // Check cache first
@@ -156,23 +156,25 @@ impl AurClient {
                 }
             }
         }
-        
+
         // Fetch from API
         let results = self.get_info_batch(&[name.to_string()]).await?;
-        results.into_iter().next()
+        results
+            .into_iter()
+            .next()
             .ok_or_else(|| anyhow!("Package '{}' not found in AUR", name))
     }
-    
+
     /// Batch fetch multiple packages (up to 250 per request)
     pub async fn get_info_batch(&self, names: &[String]) -> Result<Vec<AurPackageInfo>> {
         if names.is_empty() {
             return Ok(vec![]);
         }
-        
+
         // Check cache for already-known packages
         let mut cached = Vec::new();
         let mut to_fetch = Vec::new();
-        
+
         {
             let cache = self.cache.read().await;
             for name in names {
@@ -185,107 +187,96 @@ impl AurClient {
                 to_fetch.push(name.clone());
             }
         }
-        
+
         if to_fetch.is_empty() {
             return Ok(cached);
         }
-        
+
         // AUR RPC supports up to 250 packages per request
         const BATCH_SIZE: usize = 250;
         let mut all_results = cached;
-        
+
         for chunk in to_fetch.chunks(BATCH_SIZE) {
             self.rate_limit().await;
-            
-            let args: Vec<String> = chunk.iter()
+
+            let args: Vec<String> = chunk
+                .iter()
                 .map(|n| format!("arg[]={}", urlencoding::encode(n)))
                 .collect();
-            
+
             let url = format!("{}?v=5&type=info&{}", self.base_url, args.join("&"));
-            
-            let response: AurRpcResponse = self.client
-                .get(&url)
-                .send()
-                .await?
-                .json()
-                .await?;
-            
+
+            let response: AurRpcResponse = self.client.get(&url).send().await?.json().await?;
+
             if let Some(error) = response.error {
                 return Err(anyhow!("AUR RPC error: {}", error));
             }
-            
+
             // Update cache
             {
                 let mut cache = self.cache.write().await;
                 for pkg in &response.results {
-                    cache.put(pkg.name.clone(), CacheEntry {
-                        info: pkg.clone(),
-                        cached_at: Instant::now(),
-                    });
+                    cache.put(
+                        pkg.name.clone(),
+                        CacheEntry {
+                            info: pkg.clone(),
+                            cached_at: Instant::now(),
+                        },
+                    );
                 }
             }
-            
+
             all_results.extend(response.results);
         }
-        
+
         Ok(all_results)
     }
-    
+
     /// Search for packages by keyword
     pub async fn search(&self, query: &str) -> Result<Vec<AurPackageInfo>> {
         self.rate_limit().await;
-        
+
         let url = format!(
             "{}?v=5&type=search&arg={}",
             self.base_url,
             urlencoding::encode(query)
         );
-        
-        let response: AurRpcResponse = self.client
-            .get(&url)
-            .send()
-            .await?
-            .json()
-            .await?;
-        
+
+        let response: AurRpcResponse = self.client.get(&url).send().await?.json().await?;
+
         if let Some(error) = response.error {
             return Err(anyhow!("AUR RPC error: {}", error));
         }
-        
+
         Ok(response.results)
     }
-    
+
     /// Search with field specifier (name, name-desc, maintainer, depends, makedepends, optdepends, checkdepends)
     pub async fn search_by(&self, field: &str, query: &str) -> Result<Vec<AurPackageInfo>> {
         self.rate_limit().await;
-        
+
         let url = format!(
             "{}?v=5&type=search&by={}&arg={}",
             self.base_url,
             field,
             urlencoding::encode(query)
         );
-        
-        let response: AurRpcResponse = self.client
-            .get(&url)
-            .send()
-            .await?
-            .json()
-            .await?;
-        
+
+        let response: AurRpcResponse = self.client.get(&url).send().await?.json().await?;
+
         if let Some(error) = response.error {
             return Err(anyhow!("AUR RPC error: {}", error));
         }
-        
+
         Ok(response.results)
     }
-    
+
     /// Clear the cache
     pub async fn clear_cache(&self) {
         let mut cache = self.cache.write().await;
         cache.clear();
     }
-    
+
     /// Get cache statistics
     pub async fn cache_stats(&self) -> (usize, usize) {
         let cache = self.cache.read().await;
@@ -303,7 +294,7 @@ impl Default for AurClient {
 pub fn parse_dependency(dep: &str) -> (String, Option<String>) {
     // Dependencies can be in format: name, name>=version, name=version, etc.
     let dep = dep.trim();
-    
+
     // Check for version operators
     for op in &[">=", "<=", "=", ">", "<"] {
         if let Some(pos) = dep.find(op) {
@@ -312,35 +303,35 @@ pub fn parse_dependency(dep: &str) -> (String, Option<String>) {
             return (name, Some(version));
         }
     }
-    
+
     // Check for provides (: separator)
     if let Some(pos) = dep.find(':') {
         let name = dep[..pos].to_string();
         return (name, None);
     }
-    
+
     (dep.to_string(), None)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_dependency() {
         let (name, version) = parse_dependency("gcc");
         assert_eq!(name, "gcc");
         assert!(version.is_none());
-        
+
         let (name, version) = parse_dependency("python>=3.10");
         assert_eq!(name, "python");
         assert_eq!(version.unwrap(), ">=3.10");
-        
+
         let (name, version) = parse_dependency("rust=1.70.0");
         assert_eq!(name, "rust");
         assert_eq!(version.unwrap(), "=1.70.0");
     }
-    
+
     #[test]
     fn test_snapshot_url() {
         let info = AurPackageInfo {
@@ -370,7 +361,7 @@ mod tests {
             license: vec![],
             keywords: vec![],
         };
-        
+
         assert_eq!(
             info.snapshot_url(),
             "https://aur.archlinux.org/cgit/aur.git/snapshot/test-pkg-base.tar.gz"

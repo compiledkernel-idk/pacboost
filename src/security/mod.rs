@@ -24,19 +24,17 @@
 //! - CVE database integration
 //! - Trust scoring
 
+pub mod cve;
 pub mod malware;
 pub mod sandbox;
-pub mod cve;
 pub mod trust;
 
 use anyhow::Result;
 use console::style;
-use std::path::Path;
 
-pub use malware::{MalwareDetector, MalwareReport, ThreatLevel};
-pub use sandbox::{Sandbox, SandboxConfig};
 pub use cve::{CveChecker, Vulnerability};
-pub use trust::{TrustScorer, TrustLevel, MaintainerInfo};
+pub use malware::{MalwareDetector, MalwareReport, ThreatLevel};
+pub use trust::{TrustLevel, TrustScorer};
 
 /// Unified security manager
 pub struct SecurityManager {
@@ -105,20 +103,30 @@ impl SecurityManager {
     }
 
     /// Perform a comprehensive security scan on a PKGBUILD
-    pub async fn scan_pkgbuild(&self, content: &str, maintainer: Option<&str>) -> Result<SecurityReport> {
+    pub async fn scan_pkgbuild(
+        &self,
+        content: &str,
+        maintainer: Option<&str>,
+    ) -> Result<SecurityReport> {
         let mut warnings = Vec::new();
         let mut blockers = Vec::new();
 
         // Malware scan
         let malware_report = if self.config.enable_malware_scan {
             let report = self.malware_detector.scan(content);
-            
+
             if report.threat_level == ThreatLevel::Critical {
-                blockers.push(format!("Critical malware threat detected: {} issues", report.threats.len()));
+                blockers.push(format!(
+                    "Critical malware threat detected: {} issues",
+                    report.threats.len()
+                ));
             } else if report.threat_level == ThreatLevel::High {
-                warnings.push(format!("High-severity security issues: {} threats", report.threats.len()));
+                warnings.push(format!(
+                    "High-severity security issues: {} threats",
+                    report.threats.len()
+                ));
             }
-            
+
             Some(report)
         } else {
             None
@@ -130,11 +138,14 @@ impl SecurityManager {
                 let info = self.trust_scorer.get_maintainer_info(maintainer).await;
                 let score = self.trust_scorer.calculate_score(&info);
                 let level = TrustLevel::from_score(score);
-                
+
                 if score < self.config.min_trust_score {
-                    warnings.push(format!("Low trust score: {} (minimum: {})", score, self.config.min_trust_score));
+                    warnings.push(format!(
+                        "Low trust score: {} (minimum: {})",
+                        score, self.config.min_trust_score
+                    ));
                 }
-                
+
                 (level, score)
             } else {
                 warnings.push("Unknown maintainer - cannot verify trust".to_string());
@@ -145,8 +156,8 @@ impl SecurityManager {
         };
 
         // Determine overall safety
-        let overall_safe = blockers.is_empty() && 
-            (trust_score >= self.config.min_trust_score || !self.config.enable_trust_check);
+        let overall_safe = blockers.is_empty()
+            && (trust_score >= self.config.min_trust_score || !self.config.enable_trust_check);
 
         Ok(SecurityReport {
             malware: malware_report,
@@ -160,7 +171,11 @@ impl SecurityManager {
     }
 
     /// Check a package for known vulnerabilities
-    pub async fn check_package_cve(&self, package_name: &str, version: &str) -> Result<Vec<Vulnerability>> {
+    pub async fn check_package_cve(
+        &self,
+        package_name: &str,
+        version: &str,
+    ) -> Result<Vec<Vulnerability>> {
         if !self.config.enable_cve_check {
             return Ok(Vec::new());
         }
@@ -171,10 +186,12 @@ impl SecurityManager {
     /// Display security report
     pub fn display_report(&self, report: &SecurityReport) {
         println!();
-        println!("{} {}", 
+        println!(
+            "{} {}",
             style("::").cyan().bold(),
-            style("Security Report").white().bold());
-        
+            style("Security Report").white().bold()
+        );
+
         // Malware results
         if let Some(ref malware) = report.malware {
             let threat_style = match malware.threat_level {
@@ -184,9 +201,13 @@ impl SecurityManager {
                 ThreatLevel::Low => style("LOW").blue(),
                 ThreatLevel::None => style("NONE").green(),
             };
-            
-            println!("   Malware Scan: {} ({} threats)", threat_style, malware.threats.len());
-            
+
+            println!(
+                "   Malware Scan: {} ({} threats)",
+                threat_style,
+                malware.threats.len()
+            );
+
             for threat in &malware.threats {
                 println!("      - {}", style(&threat.description).dim());
             }
@@ -199,7 +220,10 @@ impl SecurityManager {
             TrustLevel::Unknown => style("Unknown").yellow(),
             TrustLevel::Suspicious => style("Suspicious").red(),
         };
-        println!("   Trust Level: {} (score: {})", trust_style, report.trust_score);
+        println!(
+            "   Trust Level: {} (score: {})",
+            trust_style, report.trust_score
+        );
 
         // Warnings
         for warning in &report.warnings {
@@ -213,13 +237,17 @@ impl SecurityManager {
 
         // Overall status
         if report.overall_safe {
-            println!("   {} {}", 
+            println!(
+                "   {} {}",
                 style("✓").green().bold(),
-                style("Package passed security checks").green());
+                style("Package passed security checks").green()
+            );
         } else {
-            println!("   {} {}", 
+            println!(
+                "   {} {}",
                 style("✗").red().bold(),
-                style("Package FAILED security checks").red().bold());
+                style("Package FAILED security checks").red().bold()
+            );
         }
     }
 }

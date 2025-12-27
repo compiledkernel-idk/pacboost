@@ -5,13 +5,17 @@
 
 //! Core download engine with segmented parallel downloads.
 
-use super::{DownloadConfig, mirror::MirrorPool, segment::{Segment, SegmentManager}, scheduler::Scheduler};
-use anyhow::{Context, Result, anyhow};
+use super::{
+    mirror::MirrorPool,
+    segment::{Segment, SegmentManager},
+    DownloadConfig,
+};
+use anyhow::{anyhow, Context, Result};
 use console::style;
 use futures::StreamExt;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use reqwest::{Client, header, StatusCode};
-use std::path::{Path, PathBuf};
+use reqwest::{header, Client, StatusCode};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -100,7 +104,7 @@ impl DownloadEngine {
             tokio::fs::create_dir_all(cache_dir).await?;
         }
 
-        let mp = mp.unwrap_or_else(MultiProgress::new);
+        let mp = mp.unwrap_or_default();
         let semaphore = Arc::new(Semaphore::new(self.config.max_connections));
         let total_progress = Arc::new(AtomicU64::new(0));
         let start_time = Instant::now();
@@ -128,7 +132,7 @@ impl DownloadEngine {
 
             join_set.spawn(async move {
                 let _permit = semaphore.acquire().await?;
-                
+
                 let result = download_file_segmented(
                     &client,
                     &config,
@@ -136,7 +140,8 @@ impl DownloadEngine {
                     &cache_dir,
                     Some(&mp),
                     total_progress.clone(),
-                ).await;
+                )
+                .await;
 
                 main_pb.inc(1);
                 result
@@ -156,7 +161,7 @@ impl DownloadEngine {
 
         let total_bytes = total_progress.load(Ordering::Relaxed);
         let elapsed = start_time.elapsed();
-        
+
         if total_bytes > 0 && !results.is_empty() {
             let throughput = (total_bytes as f64 / 1024.0 / 1024.0) / elapsed.as_secs_f64();
             println!(
@@ -195,7 +200,7 @@ async fn download_file_segmented(
 
     // Decide whether to use segmented download
     let use_segments = supports_ranges && size >= config.segment_threshold;
-    
+
     // Create progress bar
     let pb = if let Some(mp) = mp {
         let pb = mp.add(ProgressBar::new(size));
@@ -212,9 +217,26 @@ async fn download_file_segmented(
     };
 
     let bytes_downloaded = if use_segments {
-        download_with_segments(client, config, &mirrors, &target_path, size, pb.as_ref(), total_progress.clone()).await?
+        download_with_segments(
+            client,
+            config,
+            &mirrors,
+            &target_path,
+            size,
+            pb.as_ref(),
+            total_progress.clone(),
+        )
+        .await?
     } else {
-        download_streaming(client, &mirrors, &target_path, size, pb.as_ref(), total_progress.clone()).await?
+        download_streaming(
+            client,
+            &mirrors,
+            &target_path,
+            size,
+            pb.as_ref(),
+            total_progress.clone(),
+        )
+        .await?
     };
 
     if let Some(pb) = pb {
@@ -249,7 +271,7 @@ async fn probe_file_metadata(client: &Client, mirrors: &MirrorPool) -> Result<(u
                     .and_then(|v| v.to_str().ok())
                     .map(|v| v.contains("bytes"))
                     .unwrap_or(false);
-                
+
                 if size > 0 {
                     return Ok((size, supports_ranges));
                 }
@@ -266,7 +288,7 @@ async fn probe_file_metadata(client: &Client, mirrors: &MirrorPool) -> Result<(u
             if response.status() == StatusCode::PARTIAL_CONTENT {
                 if let Some(range) = response.headers().get(header::CONTENT_RANGE) {
                     if let Ok(range_str) = range.to_str() {
-                        if let Some(total) = range_str.split('/').last() {
+                        if let Some(total) = range_str.split('/').next_back() {
                             if let Ok(size) = total.parse::<u64>() {
                                 return Ok((size, true));
                             }
@@ -301,14 +323,14 @@ async fn download_with_segments(
     let segments = SegmentManager::new(total_size, config.segments);
     let segments_arc = Arc::new(segments);
     let file_path = Arc::new(target_path.to_path_buf());
-    
+
     let mut join_set: JoinSet<Result<u64>> = JoinSet::new();
     let local_progress = Arc::new(AtomicU64::new(0));
-    
+
     // Get mirror URLs for round-robin distribution
     let mirror_urls = mirrors.all_urls();
     let num_mirrors = mirror_urls.len().max(1);
-    
+
     // Start segment downloads with round-robin mirror assignment
     for (idx, segment) in segments_arc.all().iter().enumerate() {
         let client = client.clone();
@@ -321,7 +343,17 @@ async fn download_with_segments(
         let segment = segment.clone();
 
         join_set.spawn(async move {
-            download_segment(&client, &mirrors, &file_path, segment, progress, total, pb, preferred_mirror).await
+            download_segment(
+                &client,
+                &mirrors,
+                &file_path,
+                segment,
+                progress,
+                total,
+                pb,
+                preferred_mirror,
+            )
+            .await
         });
     }
 
@@ -334,6 +366,7 @@ async fn download_with_segments(
 }
 
 /// Download a single segment with timeout and retry support
+#[allow(clippy::too_many_arguments)]
 async fn download_segment(
     client: &Client,
     mirrors: &MirrorPool,
@@ -345,17 +378,17 @@ async fn download_segment(
     preferred_mirror: usize,
 ) -> Result<u64> {
     use tokio::time::timeout;
-    
+
     const STALL_TIMEOUT: Duration = Duration::from_secs(30);
     const MAX_RETRIES: usize = 3;
-    
+
     segment.mark_in_progress();
 
     // Try mirrors with failover, starting with preferred mirror (round-robin)
     let mut last_error = None;
     let all_mirrors = mirrors.all_urls();
     let num_mirrors = all_mirrors.len();
-    
+
     // Rotate mirror list to start with preferred mirror
     let mirror_order: Vec<String> = if num_mirrors > 0 {
         (0..num_mirrors)
@@ -364,47 +397,45 @@ async fn download_segment(
     } else {
         all_mirrors
     };
-    
+
     for retry in 0..MAX_RETRIES {
         if retry > 0 {
             // Exponential backoff
             tokio::time::sleep(Duration::from_millis(100 * 2u64.pow(retry as u32))).await;
         }
-        
+
         for mirror_url in &mirror_order {
             let range = segment.range_header();
-            
+
             let result = timeout(
                 Duration::from_secs(60),
-                client
-                    .get(mirror_url)
-                    .header(header::RANGE, &range)
-                    .send()
-            ).await;
-            
+                client.get(mirror_url).header(header::RANGE, &range).send(),
+            )
+            .await;
+
             match result {
                 Ok(Ok(response)) => {
-                    if response.status() == StatusCode::PARTIAL_CONTENT || response.status().is_success() {
+                    if response.status() == StatusCode::PARTIAL_CONTENT
+                        || response.status().is_success()
+                    {
                         // Stream to file with buffered I/O
-                        let mut file = File::options()
-                            .write(true)
-                            .open(file_path)
+                        let mut file = File::options().write(true).open(file_path).await?;
+
+                        file.seek(std::io::SeekFrom::Start(segment.current_position()))
                             .await?;
-                        
-                        file.seek(std::io::SeekFrom::Start(segment.current_position())).await?;
-                        
+
                         let mut stream = response.bytes_stream();
                         let mut bytes_written = 0u64;
                         let mut buffer = Vec::with_capacity(256 * 1024); // 256KB buffer
                         let mut stream_error = None;
-                        
+
                         loop {
                             let chunk_result = timeout(STALL_TIMEOUT, stream.next()).await;
-                            
+
                             match chunk_result {
                                 Ok(Some(Ok(chunk))) => {
                                     buffer.extend_from_slice(&chunk);
-                                    
+
                                     // Flush buffer when it's large enough
                                     if buffer.len() >= 128 * 1024 {
                                         file.write_all(&buffer).await?;
@@ -413,7 +444,7 @@ async fn download_segment(
                                         segment.add_progress(len);
                                         local_progress.fetch_add(len, Ordering::Relaxed);
                                         total_progress.fetch_add(len, Ordering::Relaxed);
-                                        
+
                                         if let Some(ref pb) = pb {
                                             pb.inc(len);
                                         }
@@ -434,12 +465,12 @@ async fn download_segment(
                                 }
                             }
                         }
-                        
+
                         if stream_error.is_some() {
                             last_error = stream_error;
                             continue;
                         }
-                        
+
                         // Flush remaining buffer
                         if !buffer.is_empty() {
                             file.write_all(&buffer).await?;
@@ -448,12 +479,12 @@ async fn download_segment(
                             segment.add_progress(len);
                             local_progress.fetch_add(len, Ordering::Relaxed);
                             total_progress.fetch_add(len, Ordering::Relaxed);
-                            
+
                             if let Some(ref pb) = pb {
                                 pb.inc(len);
                             }
                         }
-                        
+
                         segment.mark_complete();
                         return Ok(bytes_written);
                     }
@@ -469,7 +500,11 @@ async fn download_segment(
     }
 
     segment.mark_failed();
-    Err(anyhow!("segment {} failed: {}", segment.id, last_error.unwrap_or_default()))
+    Err(anyhow!(
+        "segment {} failed: {}",
+        segment.id,
+        last_error.unwrap_or_default()
+    ))
 }
 
 /// Download without segments (streaming) with timeout and retry support
@@ -482,23 +517,20 @@ async fn download_streaming(
     total_progress: Arc<AtomicU64>,
 ) -> Result<u64> {
     use tokio::time::timeout;
-    
+
     const STALL_TIMEOUT: Duration = Duration::from_secs(30);
     const MAX_RETRIES: usize = 3;
-    
+
     let mut last_error = None;
-    
+
     for retry in 0..MAX_RETRIES {
         if retry > 0 {
             tokio::time::sleep(Duration::from_millis(100 * 2u64.pow(retry as u32))).await;
         }
-        
+
         for mirror_url in mirrors.all_urls() {
-            let result = timeout(
-                Duration::from_secs(60),
-                client.get(&mirror_url).send()
-            ).await;
-            
+            let result = timeout(Duration::from_secs(60), client.get(&mirror_url).send()).await;
+
             match result {
                 Ok(Ok(response)) => {
                     if response.status().is_success() {
@@ -509,15 +541,15 @@ async fn download_streaming(
 
                         loop {
                             let chunk_result = timeout(STALL_TIMEOUT, stream.next()).await;
-                            
+
                             match chunk_result {
                                 Ok(Some(Ok(chunk))) => {
                                     file.write_all(&chunk).await?;
-                                    
+
                                     let len = chunk.len() as u64;
                                     bytes_written += len;
                                     total_progress.fetch_add(len, Ordering::Relaxed);
-                                    
+
                                     if let Some(pb) = pb {
                                         pb.inc(len);
                                     }
@@ -536,7 +568,7 @@ async fn download_streaming(
                                 }
                             }
                         }
-                        
+
                         if let Some(err) = stream_error {
                             last_error = Some(err);
                             continue;
@@ -553,7 +585,10 @@ async fn download_streaming(
         }
     }
 
-    Err(anyhow!("all mirrors failed for streaming download: {}", last_error.unwrap_or_default()))
+    Err(anyhow!(
+        "all mirrors failed for streaming download: {}",
+        last_error.unwrap_or_default()
+    ))
 }
 
 fn format_bytes(bytes: u64) -> String {

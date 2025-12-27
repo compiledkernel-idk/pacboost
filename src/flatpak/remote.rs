@@ -18,10 +18,10 @@
 
 //! Flatpak remote (repository) management.
 
-use anyhow::{Result, Context, anyhow};
+use anyhow::{anyhow, Context, Result};
 use console::style;
-use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
 
 /// Flatpak remote information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,13 +60,21 @@ impl RemoteManager {
     }
 
     fn install_flag(&self) -> &str {
-        if self.system { "--system" } else { "--user" }
+        if self.system {
+            "--system"
+        } else {
+            "--user"
+        }
     }
 
     /// List configured remotes
     pub fn list(&self) -> Result<Vec<Remote>> {
         let output = Command::new("flatpak")
-            .args(["remotes", "--columns=name,title,url,collection,priority,options", self.install_flag()])
+            .args([
+                "remotes",
+                "--columns=name,title,url,collection,priority,options",
+                self.install_flag(),
+            ])
             .output()
             .context("Failed to run flatpak remotes")?;
 
@@ -83,9 +91,16 @@ impl RemoteManager {
                 let options_str = parts.get(5).unwrap_or(&"");
                 remotes.push(Remote {
                     name: parts[0].to_string(),
-                    title: if parts[1].is_empty() { None } else { Some(parts[1].to_string()) },
+                    title: if parts[1].is_empty() {
+                        None
+                    } else {
+                        Some(parts[1].to_string())
+                    },
                     url: parts[2].to_string(),
-                    collection_id: parts.get(3).filter(|s| !s.is_empty()).map(|s| s.to_string()),
+                    collection_id: parts
+                        .get(3)
+                        .filter(|s| !s.is_empty())
+                        .map(|s| s.to_string()),
                     priority: parts.get(4).and_then(|s| s.parse().ok()).unwrap_or(1),
                     options: parse_options(options_str),
                 });
@@ -97,13 +112,21 @@ impl RemoteManager {
 
     /// Add a new remote
     pub fn add(&self, name: &str, url: &str) -> Result<()> {
-        println!("{} Adding remote: {} ({})",
+        println!(
+            "{} Adding remote: {} ({})",
             style("::").cyan().bold(),
             style(name).yellow().bold(),
-            style(url).dim());
+            style(url).dim()
+        );
 
         let status = Command::new("flatpak")
-            .args(["remote-add", "--if-not-exists", self.install_flag(), name, url])
+            .args([
+                "remote-add",
+                "--if-not-exists",
+                self.install_flag(),
+                name,
+                url,
+            ])
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .status()
@@ -113,7 +136,11 @@ impl RemoteManager {
             return Err(anyhow!("Failed to add remote {}", name));
         }
 
-        println!("{} Remote {} added", style("::").green().bold(), style(name).white().bold());
+        println!(
+            "{} Remote {} added",
+            style("::").green().bold(),
+            style(name).white().bold()
+        );
         Ok(())
     }
 
@@ -124,9 +151,11 @@ impl RemoteManager {
 
     /// Remove a remote
     pub fn remove(&self, name: &str) -> Result<()> {
-        println!("{} Removing remote: {}",
+        println!(
+            "{} Removing remote: {}",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let status = Command::new("flatpak")
             .args(["remote-delete", "--force", self.install_flag(), name])
@@ -139,7 +168,11 @@ impl RemoteManager {
             return Err(anyhow!("Failed to remove remote {}", name));
         }
 
-        println!("{} Remote {} removed", style("::").green().bold(), style(name).white().bold());
+        println!(
+            "{} Remote {} removed",
+            style("::").green().bold(),
+            style(name).white().bold()
+        );
         Ok(())
     }
 
@@ -174,7 +207,13 @@ impl RemoteManager {
     /// Set remote priority (lower = higher priority)
     pub fn set_priority(&self, name: &str, priority: i32) -> Result<()> {
         let status = Command::new("flatpak")
-            .args(["remote-modify", "--prio", &priority.to_string(), self.install_flag(), name])
+            .args([
+                "remote-modify",
+                "--prio",
+                &priority.to_string(),
+                self.install_flag(),
+                name,
+            ])
             .status()
             .context("Failed to set priority")?;
 
@@ -202,7 +241,8 @@ impl RemoteManager {
     /// Get remote info
     pub fn info(&self, name: &str) -> Result<Remote> {
         let remotes = self.list()?;
-        remotes.into_iter()
+        remotes
+            .into_iter()
             .find(|r| r.name == name)
             .ok_or_else(|| anyhow!("Remote {} not found", name))
     }
@@ -218,7 +258,7 @@ impl Default for RemoteManager {
 fn parse_options(s: &str) -> RemoteOptions {
     let mut opts = RemoteOptions::default();
     opts.enabled = true; // Default to enabled
-    
+
     for part in s.split(',') {
         let part = part.trim();
         match part {
@@ -232,14 +272,14 @@ fn parse_options(s: &str) -> RemoteOptions {
             }
         }
     }
-    
+
     opts
 }
 
 /// Display remotes in a nice table
 pub fn display_remotes(remotes: &[Remote]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
-    
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
+
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
     table.set_header(vec![
@@ -248,11 +288,15 @@ pub fn display_remotes(remotes: &[Remote]) {
         Cell::new("Priority").fg(Color::Cyan),
         Cell::new("Enabled").fg(Color::Cyan),
     ]);
-    
+
     for remote in remotes {
         let enabled_str = if remote.options.enabled { "Yes" } else { "No" };
-        let enabled_color = if remote.options.enabled { Color::Green } else { Color::Red };
-        
+        let enabled_color = if remote.options.enabled {
+            Color::Green
+        } else {
+            Color::Red
+        };
+
         table.add_row(vec![
             Cell::new(&remote.name).fg(Color::Yellow),
             Cell::new(&remote.url).fg(Color::White),
@@ -260,14 +304,14 @@ pub fn display_remotes(remotes: &[Remote]) {
             Cell::new(enabled_str).fg(enabled_color),
         ]);
     }
-    
+
     println!("{}", table);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_options() {
         let opts = parse_options("gpg-verify,disabled,prio=5");
@@ -275,12 +319,12 @@ mod tests {
         assert!(!opts.enabled);
         assert_eq!(opts.prio, 5);
     }
-    
+
     #[test]
     fn test_remote_manager_new() {
         let rm = RemoteManager::new();
         assert!(rm.system);
-        
+
         let rm = RemoteManager::user();
         assert!(!rm.system);
     }

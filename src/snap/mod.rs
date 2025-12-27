@@ -26,11 +26,11 @@
 
 pub mod store;
 
-use anyhow::{Result, Context, anyhow};
+use anyhow::{anyhow, Context, Result};
 use console::style;
-use std::process::{Command, Stdio};
-use serde::{Deserialize, Serialize};
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
 
 /// Snap package information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -123,7 +123,10 @@ impl SnapClient {
             .context("Failed to run snap list")?;
 
         if !output.status.success() {
-            return Err(anyhow!("snap list failed: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow!(
+                "snap list failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -147,7 +150,7 @@ impl SnapClient {
                     rev: parts[2].to_string(),
                     tracking: parts[3].to_string(),
                     publisher: parts[4].to_string(),
-                    notes: notes,
+                    notes,
                     confinement,
                 });
             }
@@ -188,29 +191,33 @@ impl SnapClient {
 
     /// Install a snap
     pub fn install(&self, name: &str) -> Result<()> {
-        println!("{} Installing Snap: {}",
+        println!(
+            "{} Installing Snap: {}",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let pb = ProgressBar::new_spinner();
-        pb.set_style(ProgressStyle::default_spinner()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            .template("{spinner:.cyan} {msg}")
-            .unwrap());
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.cyan} {msg}")
+                .unwrap(),
+        );
         pb.set_message(format!("Installing {}...", name));
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
 
         let mut args = vec!["install"];
-        
+
         if self.channel != "stable" {
             args.push("--channel");
             args.push(&self.channel);
         }
-        
+
         if self.allow_classic {
             args.push("--classic");
         }
-        
+
         args.push(name);
 
         let status = Command::new("sudo")
@@ -226,15 +233,17 @@ impl SnapClient {
         if !status.success() {
             // Try with --classic if it failed (might need it)
             if !self.allow_classic {
-                println!("{} Retrying with --classic flag...",
-                    style("::").yellow().bold());
-                
+                println!(
+                    "{} Retrying with --classic flag...",
+                    style("::").yellow().bold()
+                );
+
                 let status = Command::new("sudo")
                     .args(["snap", "install", "--classic", name])
                     .stdout(Stdio::inherit())
                     .stderr(Stdio::inherit())
                     .status()?;
-                
+
                 if !status.success() {
                     return Err(anyhow!("Failed to install {}", name));
                 }
@@ -243,18 +252,22 @@ impl SnapClient {
             }
         }
 
-        println!("{} {} installed",
+        println!(
+            "{} {} installed",
             style("::").green().bold(),
-            style(name).white().bold());
+            style(name).white().bold()
+        );
 
         Ok(())
     }
 
     /// Remove a snap
     pub fn remove(&self, name: &str) -> Result<()> {
-        println!("{} Removing Snap: {}",
+        println!(
+            "{} Removing Snap: {}",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let status = Command::new("sudo")
             .args(["snap", "remove", name])
@@ -267,18 +280,22 @@ impl SnapClient {
             return Err(anyhow!("Failed to remove {}", name));
         }
 
-        println!("{} {} removed",
+        println!(
+            "{} {} removed",
             style("::").green().bold(),
-            style(name).white().bold());
+            style(name).white().bold()
+        );
 
         Ok(())
     }
 
     /// Refresh (update) a specific snap
     pub fn refresh(&self, name: &str) -> Result<()> {
-        println!("{} Refreshing Snap: {}",
+        println!(
+            "{} Refreshing Snap: {}",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let status = Command::new("sudo")
             .args(["snap", "refresh", name])
@@ -296,8 +313,7 @@ impl SnapClient {
 
     /// Refresh all snaps
     pub fn refresh_all(&self) -> Result<()> {
-        println!("{} Refreshing all snaps...",
-            style("::").cyan().bold());
+        println!("{} Refreshing all snaps...", style("::").cyan().bold());
 
         let status = Command::new("sudo")
             .args(["snap", "refresh"])
@@ -310,8 +326,7 @@ impl SnapClient {
             return Err(anyhow!("Snap refresh failed"));
         }
 
-        println!("{} All snaps refreshed",
-            style("::").green().bold());
+        println!("{} All snaps refreshed", style("::").green().bold());
 
         Ok(())
     }
@@ -353,10 +368,12 @@ impl SnapClient {
 
     /// Switch snap channel
     pub fn switch_channel(&self, name: &str, channel: &str) -> Result<()> {
-        println!("{} Switching {} to channel {}",
+        println!(
+            "{} Switching {} to channel {}",
             style("::").cyan().bold(),
             style(name).yellow().bold(),
-            style(channel).green().bold());
+            style(channel).green().bold()
+        );
 
         let status = Command::new("sudo")
             .args(["snap", "refresh", "--channel", channel, name])
@@ -374,9 +391,11 @@ impl SnapClient {
 
     /// Revert a snap to previous revision
     pub fn revert(&self, name: &str) -> Result<()> {
-        println!("{} Reverting {} to previous revision",
+        println!(
+            "{} Reverting {} to previous revision",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         let status = Command::new("sudo")
             .args(["snap", "revert", name])
@@ -428,14 +447,13 @@ impl SnapClient {
     /// Get disk usage
     pub fn disk_usage(&self) -> Result<u64> {
         // Get snap directory size
-        let output = Command::new("du")
-            .args(["-sb", "/snap"])
-            .output();
+        let output = Command::new("du").args(["-sb", "/snap"]).output();
 
         match output {
             Ok(o) if o.status.success() => {
                 let stdout = String::from_utf8_lossy(&o.stdout);
-                let size: u64 = stdout.split_whitespace()
+                let size: u64 = stdout
+                    .split_whitespace()
                     .next()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(0);
@@ -475,7 +493,7 @@ pub struct SnapInfo {
 
 /// Display installed snaps in a table
 pub fn display_snaps(snaps: &[Snap]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
@@ -508,7 +526,7 @@ pub fn display_snaps(snaps: &[Snap]) {
 
 /// Display search results
 pub fn display_search_results(results: &[SnapSearchResult]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 
     if results.is_empty() {
         println!("{} No results found", style("::").yellow().bold());
@@ -555,9 +573,7 @@ mod tests {
 
     #[test]
     fn test_snap_client_builder() {
-        let client = SnapClient::new()
-            .with_classic()
-            .with_channel("beta");
+        let client = SnapClient::new().with_classic().with_channel("beta");
         assert!(client.allow_classic);
         assert_eq!(client.channel, "beta");
     }

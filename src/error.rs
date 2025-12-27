@@ -59,25 +59,22 @@ pub enum PacboostError {
 
     /// PKGBUILD security issues detected
     #[error("PKGBUILD security issue: {reason}")]
-    PkgbuildSecurityIssue { 
+    PkgbuildSecurityIssue {
         reason: String,
         severity: SecuritySeverity,
     },
 
     /// Build failures during AUR package compilation
     #[error("Build failed for '{package}': {reason}")]
-    BuildFailed { 
-        package: String, 
+    BuildFailed {
+        package: String,
         reason: String,
         exit_code: Option<i32>,
     },
 
     /// Build timeout
     #[error("Build timed out for '{package}' after {timeout_secs} seconds")]
-    BuildTimeout {
-        package: String,
-        timeout_secs: u64,
-    },
+    BuildTimeout { package: String, timeout_secs: u64 },
 
     /// Transaction failures
     #[error("Transaction failed: {reason}")]
@@ -187,19 +184,17 @@ impl fmt::Display for SecuritySeverity {
 #[derive(Debug, Clone)]
 pub enum RecoveryStrategy {
     /// Retry the operation with exponential backoff
-    Retry { 
-        max_attempts: u32, 
+    Retry {
+        max_attempts: u32,
         initial_delay_ms: u64,
     },
     /// Try an alternative approach
-    Fallback { 
-        alternative: String,
-    },
+    Fallback { alternative: String },
     /// Abort and cleanup
     Abort,
     /// Prompt user for decision
-    UserPrompt { 
-        message: String, 
+    UserPrompt {
+        message: String,
         options: Vec<String>,
     },
     /// No recovery possible
@@ -234,7 +229,7 @@ impl PacboostError {
                         options: vec!["Continue anyway".to_string(), "Abort".to_string()],
                     }
                 }
-            },
+            }
             PacboostError::PermissionDenied { .. } => RecoveryStrategy::Fatal,
             PacboostError::CircularDependency { .. } => RecoveryStrategy::Fatal,
             _ => RecoveryStrategy::Abort,
@@ -243,14 +238,14 @@ impl PacboostError {
 
     /// Check if this error is retryable
     pub fn is_retryable(&self) -> bool {
-        matches!(
-            self.recovery_strategy(),
-            RecoveryStrategy::Retry { .. }
-        )
+        matches!(self.recovery_strategy(), RecoveryStrategy::Retry { .. })
     }
 
     /// Create a database error
-    pub fn database<E: std::error::Error + Send + Sync + 'static>(context: impl Into<String>, source: E) -> Self {
+    pub fn database<E: std::error::Error + Send + Sync + 'static>(
+        context: impl Into<String>,
+        source: E,
+    ) -> Self {
         PacboostError::Database {
             context: context.into(),
             source: Some(Box::new(source)),
@@ -267,7 +262,11 @@ impl PacboostError {
     }
 
     /// Create a filesystem error
-    pub fn filesystem<E: Into<std::io::Error>>(path: impl Into<String>, message: impl Into<String>, source: E) -> Self {
+    pub fn filesystem<E: Into<std::io::Error>>(
+        path: impl Into<String>,
+        message: impl Into<String>,
+        source: E,
+    ) -> Self {
         PacboostError::FileSystem {
             path: path.into(),
             message: message.into(),
@@ -297,18 +296,26 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        let err = PacboostError::AurPackageNotFound { 
-            package: "test-pkg".to_string() 
+        let err = PacboostError::AurPackageNotFound {
+            package: "test-pkg".to_string(),
         };
         assert_eq!(format!("{}", err), "AUR package 'test-pkg' not found");
     }
 
     #[test]
     fn test_circular_dependency_display() {
-        let err = PacboostError::CircularDependency { 
-            cycle: vec!["a".to_string(), "b".to_string(), "c".to_string(), "a".to_string()]
+        let err = PacboostError::CircularDependency {
+            cycle: vec![
+                "a".to_string(),
+                "b".to_string(),
+                "c".to_string(),
+                "a".to_string(),
+            ],
         };
-        assert_eq!(format!("{}", err), "Circular dependency detected: a -> b -> c -> a");
+        assert_eq!(
+            format!("{}", err),
+            "Circular dependency detected: a -> b -> c -> a"
+        );
     }
 
     #[test]
@@ -316,8 +323,8 @@ mod tests {
         let network_err = PacboostError::network("http://test", "timeout");
         assert!(network_err.is_retryable());
 
-        let perm_err = PacboostError::PermissionDenied { 
-            operation: "write".to_string() 
+        let perm_err = PacboostError::PermissionDenied {
+            operation: "write".to_string(),
         };
         assert!(!perm_err.is_retryable());
     }

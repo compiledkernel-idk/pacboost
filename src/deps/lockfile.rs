@@ -18,11 +18,11 @@
 
 //! Lock file for reproducible builds.
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 const LOCKFILE_NAME: &str = "pacboost.lock";
 const LOCKFILE_VERSION: u32 = 1;
@@ -90,11 +90,9 @@ impl Lockfile {
 
     /// Load from file
     pub fn load(path: &Path) -> Result<Self> {
-        let content = fs::read_to_string(path)
-            .context("Failed to read lock file")?;
-        let lockfile: Self = serde_json::from_str(&content)
-            .context("Failed to parse lock file")?;
-        
+        let content = fs::read_to_string(path).context("Failed to read lock file")?;
+        let lockfile: Self = serde_json::from_str(&content).context("Failed to parse lock file")?;
+
         if lockfile.version > LOCKFILE_VERSION {
             return Err(anyhow::anyhow!(
                 "Lock file version {} is newer than supported version {}",
@@ -102,7 +100,7 @@ impl Lockfile {
                 LOCKFILE_VERSION
             ));
         }
-        
+
         Ok(lockfile)
     }
 
@@ -124,12 +122,11 @@ impl Lockfile {
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        
-        let content = serde_json::to_string_pretty(self)
-            .context("Failed to serialize lock file")?;
-        fs::write(path, content)
-            .context("Failed to write lock file")?;
-        
+
+        let content =
+            serde_json::to_string_pretty(self).context("Failed to serialize lock file")?;
+        fs::write(path, content).context("Failed to write lock file")?;
+
         Ok(())
     }
 
@@ -174,7 +171,8 @@ impl Lockfile {
         let mut removed = Vec::new();
         let mut updated = Vec::new();
 
-        let installed_map: HashMap<_, _> = installed.iter()
+        let installed_map: HashMap<_, _> = installed
+            .iter()
             .map(|(n, v)| (n.as_str(), v.as_str()))
             .collect();
 
@@ -182,7 +180,11 @@ impl Lockfile {
         for (name, locked) in &self.packages {
             if let Some(current_version) = installed_map.get(name.as_str()) {
                 if *current_version != locked.version {
-                    updated.push((name.clone(), locked.version.clone(), current_version.to_string()));
+                    updated.push((
+                        name.clone(),
+                        locked.version.clone(),
+                        current_version.to_string(),
+                    ));
                 }
             } else {
                 removed.push(name.clone());
@@ -196,7 +198,11 @@ impl Lockfile {
             }
         }
 
-        LockfileDiff { added, removed, updated }
+        LockfileDiff {
+            added,
+            removed,
+            updated,
+        }
     }
 }
 
@@ -223,7 +229,10 @@ impl LockfileDiff {
         use console::style;
 
         if self.is_empty() {
-            println!("{} Lock file matches current state", style("✓").green().bold());
+            println!(
+                "{} Lock file matches current state",
+                style("✓").green().bold()
+            );
             return;
         }
 
@@ -235,7 +244,10 @@ impl LockfileDiff {
         }
 
         if !self.removed.is_empty() {
-            println!("{} Removed packages (in lock but not installed):", style("-").red().bold());
+            println!(
+                "{} Removed packages (in lock but not installed):",
+                style("-").red().bold()
+            );
             for name in &self.removed {
                 println!("   - {}", style(name).red());
             }
@@ -244,10 +256,12 @@ impl LockfileDiff {
         if !self.updated.is_empty() {
             println!("{} Updated packages:", style("~").yellow().bold());
             for (name, locked, current) in &self.updated {
-                println!("   ~ {} {} -> {}", 
+                println!(
+                    "   ~ {} {} -> {}",
                     style(name).yellow(),
                     style(locked).dim(),
-                    style(current).green());
+                    style(current).green()
+                );
             }
         }
     }
@@ -278,7 +292,7 @@ mod tests {
     #[test]
     fn test_add_remove_package() {
         let mut lockfile = Lockfile::new();
-        
+
         lockfile.add_package(LockedPackage {
             name: "test".to_string(),
             version: "1.0.0".to_string(),
@@ -288,12 +302,14 @@ mod tests {
             repository: "extra".to_string(),
             sha256: None,
             dependencies: Vec::new(),
-            source: PackageSource::Official { repo: "extra".to_string() },
+            source: PackageSource::Official {
+                repo: "extra".to_string(),
+            },
         });
-        
+
         assert_eq!(lockfile.len(), 1);
         assert!(lockfile.is_locked("test"));
-        
+
         lockfile.remove_package("test");
         assert_eq!(lockfile.len(), 0);
     }
@@ -302,7 +318,7 @@ mod tests {
     fn test_save_load() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.lock");
-        
+
         let mut lockfile = Lockfile::new();
         lockfile.add_package(LockedPackage {
             name: "test".to_string(),
@@ -313,12 +329,14 @@ mod tests {
             repository: "extra".to_string(),
             sha256: None,
             dependencies: Vec::new(),
-            source: PackageSource::Official { repo: "extra".to_string() },
+            source: PackageSource::Official {
+                repo: "extra".to_string(),
+            },
         });
-        
+
         lockfile.save(&path).unwrap();
         let loaded = Lockfile::load(&path).unwrap();
-        
+
         assert_eq!(loaded.len(), 1);
         assert!(loaded.is_locked("test"));
     }
@@ -335,7 +353,9 @@ mod tests {
             repository: "extra".to_string(),
             sha256: None,
             dependencies: Vec::new(),
-            source: PackageSource::Official { repo: "extra".to_string() },
+            source: PackageSource::Official {
+                repo: "extra".to_string(),
+            },
         });
         lockfile.add_package(LockedPackage {
             name: "b".to_string(),
@@ -346,14 +366,16 @@ mod tests {
             repository: "extra".to_string(),
             sha256: None,
             dependencies: Vec::new(),
-            source: PackageSource::Official { repo: "extra".to_string() },
+            source: PackageSource::Official {
+                repo: "extra".to_string(),
+            },
         });
-        
+
         let installed = vec![
-            ("a".to_string(), "2.0".to_string()),  // updated
-            ("c".to_string(), "1.0".to_string()),  // added
+            ("a".to_string(), "2.0".to_string()), // updated
+            ("c".to_string(), "1.0".to_string()), // added
         ];
-        
+
         let diff = lockfile.diff(&installed);
         assert_eq!(diff.added.len(), 1);
         assert_eq!(diff.removed.len(), 1);

@@ -24,15 +24,12 @@
 //! - PKGBUILD parsing and security validation
 //! - Sandboxed package building
 
-pub mod client;
-pub mod resolver;
-pub mod pkgbuild;
 pub mod builder;
+pub mod client;
+pub mod pkgbuild;
+pub mod resolver;
 
 pub use client::{AurClient, AurPackageInfo};
-pub use resolver::DependencyGraph;
-pub use pkgbuild::{Pkgbuild, SecurityValidator, SecurityReport};
-pub use builder::AurBuilder;
 
 use serde::Deserialize;
 

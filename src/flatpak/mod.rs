@@ -26,12 +26,11 @@
 
 pub mod remote;
 
-use anyhow::{Result, Context, anyhow};
+use anyhow::{anyhow, Context, Result};
 use console::style;
-use std::process::{Command, Stdio};
-use std::collections::HashMap;
-use serde::{Deserialize, Serialize};
 use indicatif::{ProgressBar, ProgressStyle};
+use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
 
 /// Flatpak application information
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,18 +100,30 @@ impl FlatpakClient {
 
     /// Get installation flag
     fn install_flag(&self) -> &str {
-        if self.system { "--system" } else { "--user" }
+        if self.system {
+            "--system"
+        } else {
+            "--user"
+        }
     }
 
     /// List installed Flatpak applications
     pub fn list_apps(&self) -> Result<Vec<FlatpakApp>> {
         let output = Command::new("flatpak")
-            .args(["list", "--app", "--columns=name,application,version,branch,arch,origin,installation,size", self.install_flag()])
+            .args([
+                "list",
+                "--app",
+                "--columns=name,application,version,branch,arch,origin,installation,size",
+                self.install_flag(),
+            ])
             .output()
             .context("Failed to run flatpak list")?;
 
         if !output.status.success() {
-            return Err(anyhow!("flatpak list failed: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow!(
+                "flatpak list failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -141,7 +152,12 @@ impl FlatpakClient {
     /// List installed runtimes
     pub fn list_runtimes(&self) -> Result<Vec<FlatpakRuntime>> {
         let output = Command::new("flatpak")
-            .args(["list", "--runtime", "--columns=name,application,version,branch,arch,origin", self.install_flag()])
+            .args([
+                "list",
+                "--runtime",
+                "--columns=name,application,version,branch,arch,origin",
+                self.install_flag(),
+            ])
             .output()
             .context("Failed to run flatpak list --runtime")?;
 
@@ -172,7 +188,11 @@ impl FlatpakClient {
     /// Search for Flatpak applications
     pub fn search(&self, query: &str) -> Result<Vec<FlatpakSearchResult>> {
         let output = Command::new("flatpak")
-            .args(["search", "--columns=name,application,version,branch,remotes,description", query])
+            .args([
+                "search",
+                "--columns=name,application,version,branch,remotes,description",
+                query,
+            ])
             .output()
             .context("Failed to run flatpak search")?;
 
@@ -203,15 +223,19 @@ impl FlatpakClient {
 
     /// Install a Flatpak application
     pub fn install(&self, app_id: &str) -> Result<()> {
-        println!("{} Installing Flatpak: {}", 
+        println!(
+            "{} Installing Flatpak: {}",
             style("::").cyan().bold(),
-            style(app_id).yellow().bold());
+            style(app_id).yellow().bold()
+        );
 
         let pb = ProgressBar::new_spinner();
-        pb.set_style(ProgressStyle::default_spinner()
-            .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
-            .template("{spinner:.cyan} {msg}")
-            .unwrap());
+        pb.set_style(
+            ProgressStyle::default_spinner()
+                .tick_chars("⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏")
+                .template("{spinner:.cyan} {msg}")
+                .unwrap(),
+        );
         pb.set_message(format!("Installing {}...", app_id));
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
 
@@ -228,20 +252,22 @@ impl FlatpakClient {
             return Err(anyhow!("Failed to install {}", app_id));
         }
 
-        println!("{} {} installed",
+        println!(
+            "{} {} installed",
             style("::").green().bold(),
-            style(app_id).white().bold());
+            style(app_id).white().bold()
+        );
 
         Ok(())
     }
 
     /// Install multiple Flatpak applications in parallel
     pub async fn install_many(&self, app_ids: &[String]) -> Result<()> {
-        use tokio::process::Command as TokioCommand;
-
-        println!("{} Installing {} Flatpak application(s)...",
+        println!(
+            "{} Installing {} Flatpak application(s)...",
             style("::").cyan().bold(),
-            style(app_ids.len()).yellow().bold());
+            style(app_ids.len()).yellow().bold()
+        );
 
         for app_id in app_ids {
             self.install(app_id)?;
@@ -252,9 +278,11 @@ impl FlatpakClient {
 
     /// Remove a Flatpak application
     pub fn remove(&self, app_id: &str) -> Result<()> {
-        println!("{} Removing Flatpak: {}",
+        println!(
+            "{} Removing Flatpak: {}",
             style("::").cyan().bold(),
-            style(app_id).yellow().bold());
+            style(app_id).yellow().bold()
+        );
 
         let status = Command::new("flatpak")
             .args(["uninstall", "-y", self.install_flag(), app_id])
@@ -267,17 +295,21 @@ impl FlatpakClient {
             return Err(anyhow!("Failed to remove {}", app_id));
         }
 
-        println!("{} {} removed",
+        println!(
+            "{} {} removed",
             style("::").green().bold(),
-            style(app_id).white().bold());
+            style(app_id).white().bold()
+        );
 
         Ok(())
     }
 
     /// Update all Flatpak applications
     pub fn update_all(&self) -> Result<()> {
-        println!("{} Updating all Flatpak applications...",
-            style("::").cyan().bold());
+        println!(
+            "{} Updating all Flatpak applications...",
+            style("::").cyan().bold()
+        );
 
         let status = Command::new("flatpak")
             .args(["update", "-y", self.install_flag()])
@@ -290,17 +322,21 @@ impl FlatpakClient {
             return Err(anyhow!("Flatpak update failed"));
         }
 
-        println!("{} All Flatpak applications updated",
-            style("::").green().bold());
+        println!(
+            "{} All Flatpak applications updated",
+            style("::").green().bold()
+        );
 
         Ok(())
     }
 
     /// Update a specific Flatpak application
     pub fn update(&self, app_id: &str) -> Result<()> {
-        println!("{} Updating Flatpak: {}",
+        println!(
+            "{} Updating Flatpak: {}",
             style("::").cyan().bold(),
-            style(app_id).yellow().bold());
+            style(app_id).yellow().bold()
+        );
 
         let status = Command::new("flatpak")
             .args(["update", "-y", self.install_flag(), app_id])
@@ -393,7 +429,8 @@ impl FlatpakClient {
             .context("Failed to run flatpak cleanup")?;
 
         let stdout = String::from_utf8_lossy(&output.stdout);
-        let removed: Vec<String> = stdout.lines()
+        let removed: Vec<String> = stdout
+            .lines()
             .filter(|l| !l.is_empty())
             .map(|s| s.to_string())
             .collect();
@@ -473,7 +510,7 @@ fn parse_size(s: &str) -> Option<u64> {
     if parts.len() != 2 {
         return None;
     }
-    
+
     let value: f64 = parts[0].parse().ok()?;
     let multiplier: u64 = match parts[1].to_uppercase().as_str() {
         "B" => 1,
@@ -483,14 +520,14 @@ fn parse_size(s: &str) -> Option<u64> {
         "TB" | "TIB" => 1024_u64 * 1024 * 1024 * 1024,
         _ => return None,
     };
-    
+
     Some((value * multiplier as f64) as u64)
 }
 
 /// Display Flatpak apps in a nice table
 pub fn display_apps(apps: &[FlatpakApp]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
-    
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
+
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
     table.set_header(vec![
@@ -500,7 +537,7 @@ pub fn display_apps(apps: &[FlatpakApp]) {
         Cell::new("Origin").fg(Color::Cyan),
         Cell::new("Size").fg(Color::Cyan),
     ]);
-    
+
     for app in apps {
         let size = format_size(app.size_bytes);
         table.add_row(vec![
@@ -511,19 +548,19 @@ pub fn display_apps(apps: &[FlatpakApp]) {
             Cell::new(&size).fg(Color::Magenta),
         ]);
     }
-    
+
     println!("{}", table);
 }
 
 /// Display search results
 pub fn display_search_results(results: &[FlatpakSearchResult]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
-    
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
+
     if results.is_empty() {
         println!("{} No results found", style("::").yellow().bold());
         return;
     }
-    
+
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
     table.set_header(vec![
@@ -533,7 +570,7 @@ pub fn display_search_results(results: &[FlatpakSearchResult]) {
         Cell::new("Remote").fg(Color::Cyan),
         Cell::new("Description").fg(Color::Cyan),
     ]);
-    
+
     for result in results {
         table.add_row(vec![
             Cell::new(&result.name).fg(Color::White),
@@ -543,7 +580,7 @@ pub fn display_search_results(results: &[FlatpakSearchResult]) {
             Cell::new(result.description.as_deref().unwrap_or("-")).fg(Color::DarkGrey),
         ]);
     }
-    
+
     println!("{}", table);
 }
 
@@ -552,7 +589,7 @@ fn format_size(bytes: u64) -> String {
     const KB: u64 = 1024;
     const MB: u64 = KB * 1024;
     const GB: u64 = MB * 1024;
-    
+
     if bytes >= GB {
         format!("{:.2} GB", bytes as f64 / GB as f64)
     } else if bytes >= MB {
@@ -567,21 +604,21 @@ fn format_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_parse_size() {
         assert_eq!(parse_size("1.5 GB"), Some(1610612736));
         assert_eq!(parse_size("100 MB"), Some(104857600));
         assert_eq!(parse_size("1024 KB"), Some(1048576));
     }
-    
+
     #[test]
     fn test_format_size() {
         assert_eq!(format_size(1073741824), "1.00 GB");
         assert_eq!(format_size(1048576), "1.00 MB");
         assert_eq!(format_size(1024), "1.00 KB");
     }
-    
+
     #[test]
     fn test_flatpak_available() {
         // This test just checks the function works

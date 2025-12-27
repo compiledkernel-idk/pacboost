@@ -18,7 +18,7 @@
 
 //! CVE database integration.
 
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -85,9 +85,9 @@ impl CveChecker {
     /// Check a package for known vulnerabilities
     pub async fn check_package(&self, package: &str, version: &str) -> Result<Vec<Vulnerability>> {
         let issues = self.fetch_arch_security().await?;
-        
+
         let mut vulnerabilities = Vec::new();
-        
+
         for issue in issues {
             if issue.packages.iter().any(|p| p == package) {
                 // Check if the vulnerability affects this version
@@ -114,15 +114,17 @@ impl CveChecker {
     }
 
     /// Check multiple packages
-    pub async fn check_packages(&self, packages: &[(String, String)]) -> Result<HashMap<String, Vec<Vulnerability>>> {
+    pub async fn check_packages(
+        &self,
+        packages: &[(String, String)],
+    ) -> Result<HashMap<String, Vec<Vulnerability>>> {
         let issues = self.fetch_arch_security().await?;
         let mut result = HashMap::new();
 
         for (package, version) in packages {
-            let vulns: Vec<_> = issues.iter()
-                .filter(|issue| {
-                    issue.packages.iter().any(|p| p == package)
-                })
+            let vulns: Vec<_> = issues
+                .iter()
+                .filter(|issue| issue.packages.iter().any(|p| p == package))
                 .filter(|issue| {
                     if let Some(ref fixed) = issue.fixed_version {
                         !version_gte(version, fixed)
@@ -143,7 +145,8 @@ impl CveChecker {
 
     /// Fetch Arch Linux security advisories
     async fn fetch_arch_security(&self) -> Result<Vec<Vulnerability>> {
-        let response = self.client
+        let response = self
+            .client
             .get(ARCH_SECURITY_URL)
             .send()
             .await
@@ -153,34 +156,39 @@ impl CveChecker {
             return Ok(Vec::new());
         }
 
-        let data: Vec<ArchSecurityIssue> = response.json().await
+        let data: Vec<ArchSecurityIssue> = response
+            .json()
+            .await
             .context("Failed to parse security data")?;
 
-        Ok(data.into_iter().map(|issue| {
-            let severity = match issue.severity.as_deref() {
-                Some("Critical") => VulnerabilitySeverity::Critical,
-                Some("High") => VulnerabilitySeverity::High,
-                Some("Medium") => VulnerabilitySeverity::Medium,
-                Some("Low") => VulnerabilitySeverity::Low,
-                _ => VulnerabilitySeverity::Unknown,
-            };
+        Ok(data
+            .into_iter()
+            .map(|issue| {
+                let severity = match issue.severity.as_deref() {
+                    Some("Critical") => VulnerabilitySeverity::Critical,
+                    Some("High") => VulnerabilitySeverity::High,
+                    Some("Medium") => VulnerabilitySeverity::Medium,
+                    Some("Low") => VulnerabilitySeverity::Low,
+                    _ => VulnerabilitySeverity::Unknown,
+                };
 
-            Vulnerability {
-                cve_id: issue.cve.clone().unwrap_or_else(|| issue.name.clone()),
-                packages: issue.packages,
-                severity,
-                description: issue.description.unwrap_or_default(),
-                fixed_version: issue.fixed,
-                status: VulnerabilityStatus::Unknown,
-                published: issue.created,
-            }
-        }).collect())
+                Vulnerability {
+                    cve_id: issue.cve.clone().unwrap_or_else(|| issue.name.clone()),
+                    packages: issue.packages,
+                    severity,
+                    description: issue.description.unwrap_or_default(),
+                    fixed_version: issue.fixed,
+                    status: VulnerabilityStatus::Unknown,
+                    published: issue.created,
+                }
+            })
+            .collect())
     }
 
     /// Get a summary of vulnerabilities
     pub fn summarize(vulns: &[Vulnerability]) -> VulnerabilitySummary {
         let mut summary = VulnerabilitySummary::default();
-        
+
         for vuln in vulns {
             match vuln.severity {
                 VulnerabilitySeverity::Critical => summary.critical += 1,
@@ -190,7 +198,7 @@ impl CveChecker {
                 VulnerabilitySeverity::Unknown => summary.unknown += 1,
             }
         }
-        
+
         summary.total = vulns.len();
         summary
     }
@@ -242,10 +250,12 @@ impl VulnerabilitySummary {
 fn version_gte(a: &str, b: &str) -> bool {
     // Simplified version comparison
     // In reality, would use alpm version comparison
-    let a_parts: Vec<u32> = a.split(|c: char| !c.is_ascii_digit())
+    let a_parts: Vec<u32> = a
+        .split(|c: char| !c.is_ascii_digit())
         .filter_map(|s| s.parse().ok())
         .collect();
-    let b_parts: Vec<u32> = b.split(|c: char| !c.is_ascii_digit())
+    let b_parts: Vec<u32> = b
+        .split(|c: char| !c.is_ascii_digit())
         .filter_map(|s| s.parse().ok())
         .collect();
 
@@ -263,7 +273,7 @@ fn version_gte(a: &str, b: &str) -> bool {
 
 /// Display vulnerabilities
 pub fn display_vulnerabilities(vulns: &[Vulnerability]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
     use console::style;
 
     if vulns.is_empty() {

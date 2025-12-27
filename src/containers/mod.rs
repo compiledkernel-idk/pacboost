@@ -23,10 +23,10 @@
 //! - Container execution
 //! - Package installation in containers
 
-use anyhow::{Result, Context, anyhow};
+use anyhow::{anyhow, Context, Result};
 use console::style;
-use std::process::{Command, Stdio};
 use serde::{Deserialize, Serialize};
+use std::process::{Command, Stdio};
 
 /// Container runtime type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +102,7 @@ impl ContainerManager {
     pub fn new() -> Result<Self> {
         let runtime = ContainerRuntime::detect()
             .ok_or_else(|| anyhow!("No container runtime found. Install Docker or Podman."))?;
-        
+
         Ok(Self { runtime })
     }
 
@@ -122,13 +122,19 @@ impl ContainerManager {
     /// List images
     pub fn list_images(&self) -> Result<Vec<ContainerImage>> {
         let output = Command::new(self.runtime.command())
-            .args(["images", "--format", "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}\t{{.Size}}"])
+            .args([
+                "images",
+                "--format",
+                "{{.ID}}\t{{.Repository}}\t{{.Tag}}\t{{.CreatedAt}}\t{{.Size}}",
+            ])
             .output()
             .context("Failed to list images")?;
 
         if !output.status.success() {
-            return Err(anyhow!("Failed to list images: {}", 
-                String::from_utf8_lossy(&output.stderr)));
+            return Err(anyhow!(
+                "Failed to list images: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         let stdout = String::from_utf8_lossy(&output.stdout);
@@ -184,9 +190,11 @@ impl ContainerManager {
 
     /// Pull an image
     pub fn pull(&self, image: &str) -> Result<()> {
-        println!("{} Pulling image: {}",
+        println!(
+            "{} Pulling image: {}",
             style("::").cyan().bold(),
-            style(image).yellow().bold());
+            style(image).yellow().bold()
+        );
 
         let status = Command::new(self.runtime.command())
             .args(["pull", image])
@@ -199,9 +207,11 @@ impl ContainerManager {
             return Err(anyhow!("Failed to pull {}", image));
         }
 
-        println!("{} {} pulled",
+        println!(
+            "{} {} pulled",
             style("::").green().bold(),
-            style(image).white().bold());
+            style(image).white().bold()
+        );
 
         Ok(())
     }
@@ -209,11 +219,11 @@ impl ContainerManager {
     /// Run a container
     pub fn run(&self, image: &str, args: &[String], interactive: bool) -> Result<()> {
         let mut cmd_args = vec!["run"];
-        
+
         if interactive {
             cmd_args.push("-it");
         }
-        
+
         cmd_args.push("--rm");
         cmd_args.push(image);
 
@@ -256,9 +266,11 @@ impl ContainerManager {
 
     /// Stop a container
     pub fn stop(&self, container: &str) -> Result<()> {
-        println!("{} Stopping container: {}",
+        println!(
+            "{} Stopping container: {}",
             style("::").cyan().bold(),
-            style(container).yellow().bold());
+            style(container).yellow().bold()
+        );
 
         let status = Command::new(self.runtime.command())
             .args(["stop", container])
@@ -290,9 +302,11 @@ impl ContainerManager {
 
     /// Remove an image
     pub fn remove_image(&self, image: &str) -> Result<()> {
-        println!("{} Removing image: {}",
+        println!(
+            "{} Removing image: {}",
             style("::").cyan().bold(),
-            style(image).yellow().bold());
+            style(image).yellow().bold()
+        );
 
         let status = Command::new(self.runtime.command())
             .args(["rmi", image])
@@ -310,9 +324,11 @@ impl ContainerManager {
 
     /// Build image from Dockerfile
     pub fn build(&self, path: &str, tag: &str) -> Result<()> {
-        println!("{} Building image: {}",
+        println!(
+            "{} Building image: {}",
             style("::").cyan().bold(),
-            style(tag).yellow().bold());
+            style(tag).yellow().bold()
+        );
 
         let status = Command::new(self.runtime.command())
             .args(["build", "-t", tag, path])
@@ -325,46 +341,69 @@ impl ContainerManager {
             return Err(anyhow!("Build failed"));
         }
 
-        println!("{} {} built",
+        println!(
+            "{} {} built",
             style("::").green().bold(),
-            style(tag).white().bold());
+            style(tag).white().bold()
+        );
 
         Ok(())
     }
 
     /// Install Arch packages in a container
-    pub fn install_packages_in_container(&self, container: &str, packages: &[String]) -> Result<()> {
-        println!("{} Installing packages in container {}...",
+    pub fn install_packages_in_container(
+        &self,
+        container: &str,
+        packages: &[String],
+    ) -> Result<()> {
+        println!(
+            "{} Installing packages in container {}...",
             style("::").cyan().bold(),
-            style(container).yellow().bold());
+            style(container).yellow().bold()
+        );
 
         // First update package database
         self.exec(container, &["pacman".to_string(), "-Sy".to_string()])?;
 
         // Install packages
-        let mut install_args = vec!["pacman".to_string(), "-S".to_string(), "--noconfirm".to_string()];
+        let mut install_args = vec![
+            "pacman".to_string(),
+            "-S".to_string(),
+            "--noconfirm".to_string(),
+        ];
         install_args.extend(packages.iter().cloned());
 
         self.exec(container, &install_args)?;
 
-        println!("{} Packages installed in container",
-            style("::").green().bold());
+        println!(
+            "{} Packages installed in container",
+            style("::").green().bold()
+        );
 
         Ok(())
     }
 
     /// Create an Arch Linux container
     pub fn create_arch_container(&self, name: &str) -> Result<()> {
-        println!("{} Creating Arch Linux container: {}",
+        println!(
+            "{} Creating Arch Linux container: {}",
             style("::").cyan().bold(),
-            style(name).yellow().bold());
+            style(name).yellow().bold()
+        );
 
         // Pull Arch Linux image
         self.pull("archlinux:latest")?;
 
         // Create container
         let status = Command::new(self.runtime.command())
-            .args(["create", "--name", name, "-it", "archlinux:latest", "/bin/bash"])
+            .args([
+                "create",
+                "--name",
+                name,
+                "-it",
+                "archlinux:latest",
+                "/bin/bash",
+            ])
             .stdout(Stdio::null())
             .status()
             .context("Failed to create container")?;
@@ -373,9 +412,11 @@ impl ContainerManager {
             return Err(anyhow!("Failed to create container"));
         }
 
-        println!("{} Container {} created",
+        println!(
+            "{} Container {} created",
             style("::").green().bold(),
-            style(name).white().bold());
+            style(name).white().bold()
+        );
 
         Ok(())
     }
@@ -392,8 +433,10 @@ impl ContainerManager {
 
     /// Prune unused resources
     pub fn prune(&self) -> Result<()> {
-        println!("{} Pruning unused container resources...",
-            style("::").cyan().bold());
+        println!(
+            "{} Pruning unused container resources...",
+            style("::").cyan().bold()
+        );
 
         let status = Command::new(self.runtime.command())
             .args(["system", "prune", "-f"])
@@ -412,7 +455,7 @@ impl ContainerManager {
 
 /// Display images in a table
 pub fn display_images(images: &[ContainerImage]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
@@ -439,7 +482,7 @@ pub fn display_images(images: &[ContainerImage]) {
 
 /// Display containers in a table
 pub fn display_containers(containers: &[Container]) {
-    use comfy_table::{Table, Cell, Color, presets::UTF8_FULL};
+    use comfy_table::{presets::UTF8_FULL, Cell, Color, Table};
 
     let mut table = Table::new();
     table.load_preset(UTF8_FULL);
@@ -451,7 +494,11 @@ pub fn display_containers(containers: &[Container]) {
     ]);
 
     for cont in containers {
-        let status_color = if cont.status.contains("Up") { Color::Green } else { Color::Yellow };
+        let status_color = if cont.status.contains("Up") {
+            Color::Green
+        } else {
+            Color::Yellow
+        };
 
         table.add_row(vec![
             Cell::new(&cont.id[..12.min(cont.id.len())]).fg(Color::Yellow),

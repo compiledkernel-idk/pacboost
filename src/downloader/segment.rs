@@ -5,7 +5,7 @@
 
 //! Segment management for parallel downloads.
 
-use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// State of a download segment
@@ -125,17 +125,17 @@ impl SegmentManager {
     /// Create segments for a file
     pub fn new(total_size: u64, num_segments: usize) -> Self {
         let num_segments = num_segments.max(1);
-        let segment_size = (total_size + num_segments as u64 - 1) / num_segments as u64;
-        
+        let segment_size = total_size.div_ceil(num_segments as u64);
+
         let mut segments = Vec::with_capacity(num_segments);
         let mut start = 0u64;
-        
+
         while start < total_size {
             let end = (start + segment_size - 1).min(total_size - 1);
             segments.push(Arc::new(Segment::new(segments.len(), start, end)));
             start = end + 1;
         }
-        
+
         Self {
             segments,
             total_size,

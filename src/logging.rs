@@ -18,13 +18,8 @@
 
 //! Logging and observability with tracing support.
 
-use tracing_subscriber::{
-    fmt,
-    layer::SubscriberExt,
-    util::SubscriberInitExt,
-    EnvFilter,
-};
 use std::path::Path;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 /// Initialize the logging system
 pub fn init() {
@@ -33,30 +28,30 @@ pub fn init() {
 
 /// Initialize logging with a specific level
 pub fn init_with_level(level: &str) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
-    
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+
     tracing_subscriber::registry()
         .with(filter)
-        .with(fmt::layer()
-            .with_target(false)
-            .with_thread_ids(false)
-            .with_thread_names(false)
-            .compact())
+        .with(
+            fmt::layer()
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_thread_names(false)
+                .compact(),
+        )
         .init();
 }
 
 /// Initialize logging with optional file output
 pub fn init_with_file(level: &str, log_file: Option<&Path>) {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(level));
-    
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(level));
+
     if let Some(path) = log_file {
         // Create log directory if needed
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        
+
         // Try to create file appender
         if let Ok(file) = std::fs::OpenOptions::new()
             .create(true)
@@ -67,23 +62,20 @@ pub fn init_with_file(level: &str, log_file: Option<&Path>) {
                 .with_writer(file)
                 .with_ansi(false)
                 .with_target(true);
-            
+
             tracing_subscriber::registry()
                 .with(filter)
                 .with(fmt::layer().compact())
                 .with(file_layer)
                 .init();
-            
+
             return;
         }
     }
-    
+
     // Fallback to console-only
     init_with_level(level);
 }
-
-/// Log macros re-exported for convenience
-pub use tracing::{debug, error, info, trace, warn};
 
 /// Span creation helpers
 #[macro_export]
@@ -110,7 +102,7 @@ macro_rules! span_build {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_init() {
         // Just verify it doesn't panic
