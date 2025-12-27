@@ -18,7 +18,7 @@ jobs:
     steps:
       - name: Install system deps
         run: |
-          pacman -Sy --noconfirm base-devel rust pkgconf pacman
+          pacman -Sy --noconfirm base-devel rust pkgconf pacman git openssh
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -35,14 +35,14 @@ jobs:
       - name: Build release
         run: |
           cargo build --release
-          
-          # Strip debug symbols to reduce binary size
           strip target/release/pacboost
           
-          # Create compressed archive
-          tar -czf pacboost-x86_64-linux.tar.gz -C target/release pacboost
+          # Use deterministic tar options to increase hash stability
+          tar --sort=name \
+              --mtime="2025-01-01 00:00Z" \
+              --owner=0 --group=0 --numeric-owner \
+              -czf pacboost-x86_64-linux.tar.gz -C target/release pacboost
           
-          # Generate checksums
           sha256sum pacboost-x86_64-linux.tar.gz > SHA256SUMS
           sha256sum target/release/pacboost >> SHA256SUMS
 
@@ -62,3 +62,35 @@ jobs:
             ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update AUR (pacboost-bin)
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          # 1. Setup SSH
+          mkdir -p ~/.ssh
+          echo "$AUR_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
+          
+          # 2. Setup Git
+          git config --global user.name "Github Action"
+          git config --global user.email "action@github.com"
+          
+          # 3. Clone, Update, and Push
+          git clone ssh://aur@aur.archlinux.org/pacboost-bin.git /tmp/aur
+          
+          # Get the hash from the file we just built
+          NEW_HASH=$(sha256sum pacboost-x86_64-linux.tar.gz | cut -d' ' -f1)
+          NEW_VER=${GITHUB_REF_NAME#v}
+          
+          cd /tmp/aur
+          sed -i "s/pkgver=.*/pkgver=$NEW_VER/" PKGBUILD
+          sed -i "s/sha256sums=.*/sha256sums=('$NEW_HASH')/" PKGBUILD
+          
+          # Regenerate .SRCINFO
+          makepkg --printsrcinfo > .SRCINFO
+          
+          git add PKGBUILD .SRCINFO
+          git commit -m "Update to $NEW_VER (Automated)"
+          git push
