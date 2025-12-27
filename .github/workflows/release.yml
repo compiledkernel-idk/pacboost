@@ -12,7 +12,6 @@ jobs:
   build:
     name: Build and Release
     runs-on: ubuntu-latest
-
     container:
       image: archlinux:latest
 
@@ -24,19 +23,42 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock') }}
+
       - name: Build release
         run: |
           cargo build --release
-          chmod +x target/release/pacboost
           
-          # Create compressed archive with standard binary name for self-updater
+          # Strip debug symbols to reduce binary size
+          strip target/release/pacboost
+          
+          # Create compressed archive
           tar -czf pacboost-x86_64-linux.tar.gz -C target/release pacboost
+          
+          # Generate checksums
+          sha256sum pacboost-x86_64-linux.tar.gz > SHA256SUMS
+          sha256sum target/release/pacboost >> SHA256SUMS
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             target/release/pacboost
             pacboost-x86_64-linux.tar.gz
+            SHA256SUMS
+          body: |
+            ## Pacboost Release ${{ github.ref_name }}
+            
+            ### Checksums
+            ```text
+            $(cat SHA256SUMS)
+            ```
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
