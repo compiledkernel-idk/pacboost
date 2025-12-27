@@ -68,9 +68,15 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           # 1. Setup SSH
+          if [ -z "$AUR_SSH_KEY" ]; then
+            echo "Error: AUR_SSH_KEY secret is not set. Skipping AUR update."
+            exit 0
+          fi
+          
           mkdir -p ~/.ssh
           echo "$AUR_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+          echo -e "Host aur.archlinux.org\n  StrictHostKeyChecking no\n  User aur" > ~/.ssh/config
           ssh-keyscan aur.archlinux.org >> ~/.ssh/known_hosts
           
           # 2. Setup Git
