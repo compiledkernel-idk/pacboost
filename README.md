@@ -15,10 +15,13 @@ Built in Rust with a custom download engine. Your official packages are still ve
 ## Installation
 
 ```bash
-# From the AUR (recommended)
-yay -S pacboost-bin
+# installl script (fastest)
+curl -sL https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh | bash
 
-# Or build from source
+
+
+### Build from source
+```bash
 sudo pacman -S --needed base-devel rust
 git clone https://github.com/compiledkernel-idk/pacboost.git
 cd pacboost

@@ -53,13 +53,7 @@ jobs:
             target/release/pacboost
             pacboost-x86_64-linux.tar.gz
             SHA256SUMS
-          body: |
-            ## Pacboost Release ${{ github.ref_name }}
-            
-            ### Checksums
-            ```text
-            $(cat SHA256SUMS)
-            ```
+          body_path: SHA256SUMS
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
