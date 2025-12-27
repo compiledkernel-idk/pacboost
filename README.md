@@ -1,29 +1,92 @@
-# pacboost
-## Install
-### Using yay
+# Pacboost
+
+<img src="assets/logo.svg" alt="Pacboost logo" width="200">
+
+Blazing fast pacman wrapper
+
+`pacboost` `pacboost-bin`
+
+## Description
+
+Pacboost is a blazing fast pacman wrapper that saturates your bandwidth. It downloads packages from multiple mirrors simultaneously, pulling chunks of the same file in parallel. Think of it as pacman on steroids.
+
+Built in Rust with a custom download engine. Your official packages are still verified with the same GPG keys pacman uses.
+
+## Installation
+
 ```bash
+# From the AUR (recommended)
 yay -S pacboost-bin
-```
-# Or use the script
-```bash
-curl -sL [https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh](https://raw.githubusercontent.com/compiledkernel-idk/pacboost/master/install.sh) | bash
+
+# Or build from source
+sudo pacman -S --needed base-devel rust
+git clone https://github.com/compiledkernel-idk/pacboost.git
+cd pacboost
+cargo build --release
+sudo install -Dm755 target/release/pacboost /usr/bin/pacboost
 ```
 
-## What is this?
-I made this because pacman is slow. It downloads one file at a time from one mirror. If you have a fast connection, you get capped by the mirror speed.
-Pacboost uses a custom Rust engine to "race" mirrors. It pulls chunks of the same file from multiple mirrors at once. It is built to saturate your bandwidth.
-It is a frontend for libalpm. Your official packages are still verified by the same GPG keys pacman uses.
-Why 17,000 lines?
-This isn't a 100-line python script that just calls curl. It is a full engine written in Rust. It needs that code to handle:
- * Mirror Racing: Pulling file segments from different sources at the same time.
- * AUR Malware Scanner: It actually parses PKGBUILDs for bad code or hidden network calls before you build them.
- * CVE Audit: Scans your system for known vulnerabilities.
- * Snapshots: Automatically backs up your system before an update.
-Commands
- * pacboost -Syu : Update your system (Official + AUR)
- * pacboost <name> : Search and install anything
- * pacboost --security-scan <file> : Run the malware scanner
- * pacboost --check-cve : Scan for vulnerabilities
- * pacboost --benchmark : Test your mirror speeds
-Safety
-This is a wrapper. It uses the official libalpm to talk to your database. Your system stays 100% compatible with standard pacman. If pacboost fails, just use pacman.
+## Examples
+
+`pacboost <target>` — Interactively search and install `<target>`.
+
+`pacboost` — Alias for `pacboost -Syu`.
+
+`pacboost -S <target>` — Install a specific package.
+
+`pacboost -Syu` — Full system upgrade (official repos + AUR).
+
+`pacboost -Syy` — Force refresh all databases.
+
+`pacboost -R <target>` — Remove a package.
+
+`pacboost -Rs <target>` — Remove a package and its orphaned dependencies.
+
+`pacboost --benchmark` — Test your mirror speeds.
+
+`pacboost --security-scan <file>` — Scan a PKGBUILD for malware.
+
+`pacboost --check-cve` — Check your system for known vulnerabilities.
+
+`pacboost --snapshots` — List available system snapshots.
+
+`pacboost --rollback-to <id>` — Restore to a previous snapshot.
+
+## How It Works
+
+Pacboost uses two levels of parallelism:
+
+1. **Chunk-level**: For each package, it splits the download into segments and pulls them from different mirrors at the same time.
+
+2. **Package-level**: All packages in your install queue download in parallel.
+
+This means if you're installing 50 packages, all 50 start downloading immediately, each one racing across multiple mirrors. Your bandwidth gets saturated.
+
+## Features
+
+- **Mirror Racing** — Pulls file segments from multiple mirrors simultaneously
+- **AUR Support** — Builds AUR packages with automatic dependency resolution
+- **Malware Scanner** — Parses PKGBUILDs for suspicious code before you build
+- **CVE Auditing** — Scans your installed packages for known vulnerabilities
+- **Snapshots** — Automatically backs up your system before updates (btrfs)
+- **Flatpak/Snap/AppImage** — Manage alternative package formats
+
+## General Tips
+
+- **Drop-in replacement**: Pacboost uses the same flags as pacman. 
+
+- **Safety first**: This is a frontend for libalpm. Your system stays 100% compatible with standard pacman. If something breaks, just use `pacman` directly.
+
+- **AUR packages**: Pacboost automatically drops privileges when building AUR packages. Run it with `sudo`.
+
+
+
+## Debugging
+
+Pacboost is not an official Arch tool. If pacboost can't build a package, first check if `makepkg` can build it successfully. If makepkg fails, report the issue to the package maintainer. Otherwise, it's likely a pacboost issue and should be reported here.
+
+
+
+## License
+
+GPL-3.0

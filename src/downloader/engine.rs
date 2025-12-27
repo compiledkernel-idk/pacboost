@@ -333,7 +333,7 @@ async fn download_with_segments(
     Ok(total_bytes)
 }
 
-/// Download a single segment
+/// Download a single segment with timeout and retry support
 async fn download_segment(
     client: &Client,
     mirrors: &MirrorPool,
@@ -344,6 +344,11 @@ async fn download_segment(
     pb: Option<ProgressBar>,
     preferred_mirror: usize,
 ) -> Result<u64> {
+    use tokio::time::timeout;
+    
+    const STALL_TIMEOUT: Duration = Duration::from_secs(30);
+    const MAX_RETRIES: usize = 3;
+    
     segment.mark_in_progress();
 
     // Try mirrors with failover, starting with preferred mirror (round-robin)
@@ -360,35 +365,83 @@ async fn download_segment(
         all_mirrors
     };
     
-    for mirror_url in mirror_order {
-        let range = segment.range_header();
+    for retry in 0..MAX_RETRIES {
+        if retry > 0 {
+            // Exponential backoff
+            tokio::time::sleep(Duration::from_millis(100 * 2u64.pow(retry as u32))).await;
+        }
         
-        match client
-            .get(&mirror_url)
-            .header(header::RANGE, &range)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if response.status() == StatusCode::PARTIAL_CONTENT || response.status().is_success() {
-                    // Stream to file with buffered I/O
-                    let mut file = File::options()
-                        .write(true)
-                        .open(file_path)
-                        .await?;
-                    
-                    file.seek(std::io::SeekFrom::Start(segment.current_position())).await?;
-                    
-                    let mut stream = response.bytes_stream();
-                    let mut bytes_written = 0u64;
-                    let mut buffer = Vec::with_capacity(256 * 1024); // 256KB buffer
-                    
-                    while let Some(chunk) = stream.next().await {
-                        let chunk = chunk?;
-                        buffer.extend_from_slice(&chunk);
+        for mirror_url in &mirror_order {
+            let range = segment.range_header();
+            
+            let result = timeout(
+                Duration::from_secs(60),
+                client
+                    .get(mirror_url)
+                    .header(header::RANGE, &range)
+                    .send()
+            ).await;
+            
+            match result {
+                Ok(Ok(response)) => {
+                    if response.status() == StatusCode::PARTIAL_CONTENT || response.status().is_success() {
+                        // Stream to file with buffered I/O
+                        let mut file = File::options()
+                            .write(true)
+                            .open(file_path)
+                            .await?;
                         
-                        // Flush buffer when it's large enough
-                        if buffer.len() >= 128 * 1024 {
+                        file.seek(std::io::SeekFrom::Start(segment.current_position())).await?;
+                        
+                        let mut stream = response.bytes_stream();
+                        let mut bytes_written = 0u64;
+                        let mut buffer = Vec::with_capacity(256 * 1024); // 256KB buffer
+                        let mut stream_error = None;
+                        
+                        loop {
+                            let chunk_result = timeout(STALL_TIMEOUT, stream.next()).await;
+                            
+                            match chunk_result {
+                                Ok(Some(Ok(chunk))) => {
+                                    buffer.extend_from_slice(&chunk);
+                                    
+                                    // Flush buffer when it's large enough
+                                    if buffer.len() >= 128 * 1024 {
+                                        file.write_all(&buffer).await?;
+                                        let len = buffer.len() as u64;
+                                        bytes_written += len;
+                                        segment.add_progress(len);
+                                        local_progress.fetch_add(len, Ordering::Relaxed);
+                                        total_progress.fetch_add(len, Ordering::Relaxed);
+                                        
+                                        if let Some(ref pb) = pb {
+                                            pb.inc(len);
+                                        }
+                                        buffer.clear();
+                                    }
+                                }
+                                Ok(Some(Err(e))) => {
+                                    stream_error = Some(e.to_string());
+                                    break;
+                                }
+                                Ok(None) => {
+                                    // Stream complete
+                                    break;
+                                }
+                                Err(_) => {
+                                    stream_error = Some("download stalled".to_string());
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if stream_error.is_some() {
+                            last_error = stream_error;
+                            continue;
+                        }
+                        
+                        // Flush remaining buffer
+                        if !buffer.is_empty() {
                             file.write_all(&buffer).await?;
                             let len = buffer.len() as u64;
                             bytes_written += len;
@@ -399,30 +452,18 @@ async fn download_segment(
                             if let Some(ref pb) = pb {
                                 pb.inc(len);
                             }
-                            buffer.clear();
                         }
-                    }
-                    
-                    // Flush remaining buffer
-                    if !buffer.is_empty() {
-                        file.write_all(&buffer).await?;
-                        let len = buffer.len() as u64;
-                        bytes_written += len;
-                        segment.add_progress(len);
-                        local_progress.fetch_add(len, Ordering::Relaxed);
-                        total_progress.fetch_add(len, Ordering::Relaxed);
                         
-                        if let Some(ref pb) = pb {
-                            pb.inc(len);
-                        }
+                        segment.mark_complete();
+                        return Ok(bytes_written);
                     }
-                    
-                    segment.mark_complete();
-                    return Ok(bytes_written);
                 }
-            }
-            Err(e) => {
-                last_error = Some(e.to_string());
+                Ok(Err(e)) => {
+                    last_error = Some(e.to_string());
+                }
+                Err(_) => {
+                    last_error = Some("connection timeout".to_string());
+                }
             }
         }
     }
@@ -431,44 +472,88 @@ async fn download_segment(
     Err(anyhow!("segment {} failed: {}", segment.id, last_error.unwrap_or_default()))
 }
 
-/// Download without segments (streaming)
+/// Download without segments (streaming) with timeout and retry support
 async fn download_streaming(
     client: &Client,
     mirrors: &MirrorPool,
     target_path: &Path,
-    expected_size: u64,
+    _expected_size: u64,
     pb: Option<&ProgressBar>,
     total_progress: Arc<AtomicU64>,
 ) -> Result<u64> {
-    for mirror_url in mirrors.all_urls() {
-        match client.get(&mirror_url).send().await {
-            Ok(response) => {
-                if response.status().is_success() {
-                    let mut file = File::create(target_path).await?;
-                    let mut stream = response.bytes_stream();
-                    let mut bytes_written = 0u64;
+    use tokio::time::timeout;
+    
+    const STALL_TIMEOUT: Duration = Duration::from_secs(30);
+    const MAX_RETRIES: usize = 3;
+    
+    let mut last_error = None;
+    
+    for retry in 0..MAX_RETRIES {
+        if retry > 0 {
+            tokio::time::sleep(Duration::from_millis(100 * 2u64.pow(retry as u32))).await;
+        }
+        
+        for mirror_url in mirrors.all_urls() {
+            let result = timeout(
+                Duration::from_secs(60),
+                client.get(&mirror_url).send()
+            ).await;
+            
+            match result {
+                Ok(Ok(response)) => {
+                    if response.status().is_success() {
+                        let mut file = File::create(target_path).await?;
+                        let mut stream = response.bytes_stream();
+                        let mut bytes_written = 0u64;
+                        let mut stream_error = None;
 
-                    while let Some(chunk) = stream.next().await {
-                        let chunk = chunk?;
-                        file.write_all(&chunk).await?;
+                        loop {
+                            let chunk_result = timeout(STALL_TIMEOUT, stream.next()).await;
+                            
+                            match chunk_result {
+                                Ok(Some(Ok(chunk))) => {
+                                    file.write_all(&chunk).await?;
+                                    
+                                    let len = chunk.len() as u64;
+                                    bytes_written += len;
+                                    total_progress.fetch_add(len, Ordering::Relaxed);
+                                    
+                                    if let Some(pb) = pb {
+                                        pb.inc(len);
+                                    }
+                                }
+                                Ok(Some(Err(e))) => {
+                                    stream_error = Some(e.to_string());
+                                    break;
+                                }
+                                Ok(None) => {
+                                    // Stream complete
+                                    return Ok(bytes_written);
+                                }
+                                Err(_) => {
+                                    stream_error = Some("download stalled".to_string());
+                                    break;
+                                }
+                            }
+                        }
                         
-                        let len = chunk.len() as u64;
-                        bytes_written += len;
-                        total_progress.fetch_add(len, Ordering::Relaxed);
-                        
-                        if let Some(pb) = pb {
-                            pb.inc(len);
+                        if let Some(err) = stream_error {
+                            last_error = Some(err);
+                            continue;
                         }
                     }
-
-                    return Ok(bytes_written);
+                }
+                Ok(Err(e)) => {
+                    last_error = Some(e.to_string());
+                }
+                Err(_) => {
+                    last_error = Some("connection timeout".to_string());
                 }
             }
-            Err(_) => continue,
         }
     }
 
-    Err(anyhow!("all mirrors failed for streaming download"))
+    Err(anyhow!("all mirrors failed for streaming download: {}", last_error.unwrap_or_default()))
 }
 
 fn format_bytes(bytes: u64) -> String {
